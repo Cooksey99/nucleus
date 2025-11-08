@@ -3,9 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ollama/ollama/api"
@@ -45,9 +48,10 @@ type PersonalizationConfig struct {
 }
 
 type LLMApp struct {
-	config Config
-	client *api.Client
-	db     *chromem.DB
+	config     Config
+	client     *api.Client
+	db         *chromem.DB
+	collection *chromem.Collection
 }
 
 func loadConfig() (Config, error) {
@@ -73,17 +77,79 @@ func NewLLMApp() (*LLMApp, error) {
 
 	os.MkdirAll(config.Storage.VectorDBPath, 0755)
 	os.MkdirAll(config.Storage.ChatHistoryPath, 0755)
-	
-	db := chromem.NewDB()
 
-	return &LLMApp{
+	app := &LLMApp{
 		config: config,
 		client: client,
-		db:     db,
-	}, nil
+	}
+
+	app.db = chromem.NewDB()
+
+	embeddingFunc := func(ctx context.Context, text string) ([]float32, error) {
+		return app.generateEmbedding(ctx, text)
+	}
+
+	collection, err := app.db.GetOrCreateCollection("knowledge", nil, embeddingFunc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create collection: %w", err)
+	}
+	app.collection = collection
+
+	return app, nil
+}
+
+func (app *LLMApp) generateEmbedding(ctx context.Context, text string) ([]float32, error) {
+	req := &api.EmbedRequest{
+		Model: app.config.RAG.EmbeddingModel,
+		Input: text,
+	}
+
+	resp, err := app.client.Embed(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("embedding failed: %w", err)
+	}
+
+	if len(resp.Embeddings) == 0 {
+		return nil, fmt.Errorf("no embeddings returned")
+	}
+
+	return resp.Embeddings[0], nil
+}
+
+func (app *LLMApp) retrieveRelevantContext(ctx context.Context, query string) (string, error) {
+	if app.collection.Count() == 0 {
+		return "", nil
+	}
+
+	results, err := app.collection.Query(ctx, query, app.config.RAG.TopK, nil, nil)
+	if err != nil {
+		return "", fmt.Errorf("retrieval failed: %w", err)
+	}
+
+	if len(results) == 0 {
+		return "", nil
+	}
+
+	var contextBuilder strings.Builder
+	contextBuilder.WriteString("\n\nRelevant context from your knowledge base:\n")
+	for i, result := range results {
+		contextBuilder.WriteString(fmt.Sprintf("\n[%d] %s\n", i+1, result.Content))
+	}
+
+	return contextBuilder.String(), nil
 }
 
 func (app *LLMApp) Chat(ctx context.Context, userMessage string) (string, error) {
+	relevantContext, err := app.retrieveRelevantContext(ctx, userMessage)
+	if err != nil {
+		log.Printf("Warning: retrieval failed: %v", err)
+	}
+
+	userMessageWithContext := userMessage
+	if relevantContext != "" {
+		userMessageWithContext = userMessage + relevantContext
+	}
+
 	messages := []api.Message{
 		{
 			Role:    "system",
@@ -91,7 +157,7 @@ func (app *LLMApp) Chat(ctx context.Context, userMessage string) (string, error)
 		},
 		{
 			Role:    "user",
-			Content: userMessage,
+			Content: userMessageWithContext,
 		},
 	}
 
@@ -104,7 +170,7 @@ func (app *LLMApp) Chat(ctx context.Context, userMessage string) (string, error)
 	}
 
 	var response strings.Builder
-	err := app.client.Chat(ctx, req, func(resp api.ChatResponse) error {
+	err = app.client.Chat(ctx, req, func(resp api.ChatResponse) error {
 		response.WriteString(resp.Message.Content)
 		return nil
 	})
@@ -117,18 +183,91 @@ func (app *LLMApp) Chat(ctx context.Context, userMessage string) (string, error)
 }
 
 func (app *LLMApp) AddKnowledge(ctx context.Context, content, metadata string) error {
-	collection, err := app.db.GetOrCreateCollection("knowledge", nil, nil)
+	err := app.collection.AddDocument(ctx, chromem.Document{
+		ID:       fmt.Sprintf("doc_%d", app.collection.Count()),
+		Content:  content,
+		Metadata: map[string]string{"source": metadata},
+	})
+
+	return err
+}
+
+func (app *LLMApp) IndexDirectory(ctx context.Context, dirPath string) error {
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		return fmt.Errorf("directory does not exist: %s", dirPath)
+	}
+
+	var indexed int
+	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		ext := filepath.Ext(path)
+		if ext != ".go" && ext != ".py" && ext != ".js" && ext != ".ts" && ext != ".md" {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("Skipping %s: %v", path, err)
+			return nil
+		}
+
+		contentStr := string(content)
+		chunks := chunkText(contentStr, app.config.RAG.ChunkSize, app.config.RAG.ChunkOverlap)
+
+		for i, chunk := range chunks {
+			err := app.collection.AddDocument(ctx, chromem.Document{
+				ID:      fmt.Sprintf("%s_chunk_%d", path, i),
+				Content: chunk,
+				Metadata: map[string]string{
+					"source": path,
+					"chunk":  fmt.Sprintf("%d", i),
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to add chunk from %s: %w", path, err)
+			}
+		}
+
+		indexed++
+		fmt.Printf("✓ Indexed: %s (%d chunks)\n", path, len(chunks))
+
+		return nil
+	})
+
 	if err != nil {
 		return err
 	}
 
-	err = collection.AddDocument(ctx, chromem.Document{
-		ID:       fmt.Sprintf("doc_%d", collection.Count()),
-		Content:  content,
-		Metadata: map[string]string{"source": metadata},
-	})
-	
-	return err
+	fmt.Printf("\nIndexed %d files\n", indexed)
+	return nil
+}
+
+func chunkText(text string, chunkSize, overlap int) []string {
+	if len(text) <= chunkSize {
+		return []string{text}
+	}
+
+	var chunks []string
+	start := 0
+
+	for start < len(text) {
+		end := start + chunkSize
+		if end > len(text) {
+			end = len(text)
+		}
+
+		chunks = append(chunks, text[start:end])
+		start += chunkSize - overlap
+	}
+
+	return chunks
 }
 
 func main() {
@@ -137,11 +276,14 @@ func main() {
 		log.Fatalf("Failed to initialize app: %v", err)
 	}
 
-	fmt.Println("Local LLM Ready!")
+	fmt.Println("Local LLM with RAG Ready!")
 	fmt.Printf("Model: %s\n", app.config.LLM.Model)
+	fmt.Printf("Knowledge Base: %d documents\n", app.collection.Count())
 	fmt.Println("\nCommands:")
-	fmt.Println("  /add <text>  - Add knowledge to vector DB")
-	fmt.Println("  /quit        - Exit")
+	fmt.Println("  /add <text>       - Add knowledge to vector DB")
+	fmt.Println("  /index <path>     - Index a directory (code files)")
+	fmt.Println("  /stats            - Show knowledge base stats")
+	fmt.Println("  /quit             - Exit")
 	fmt.Println("\nType your message:")
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -163,13 +305,28 @@ func main() {
 			break
 		}
 
+		if input == "/stats" {
+			fmt.Printf("Knowledge base contains %d documents\n", app.collection.Count())
+			continue
+		}
+
 		if strings.HasPrefix(input, "/add ") {
 			content := strings.TrimPrefix(input, "/add ")
 			err := app.AddKnowledge(ctx, content, "user_input")
 			if err != nil {
 				fmt.Printf("Error adding knowledge: %v\n", err)
 			} else {
-				fmt.Println("Added to knowledge base")
+				fmt.Println("✅ Added to knowledge base")
+			}
+			continue
+		}
+
+		if strings.HasPrefix(input, "/index ") {
+			dirPath := strings.TrimPrefix(input, "/index ")
+			fmt.Printf("Indexing directory: %s\n", dirPath)
+			err := app.IndexDirectory(ctx, dirPath)
+			if err != nil {
+				fmt.Printf("Error indexing: %v\n", err)
 			}
 			continue
 		}

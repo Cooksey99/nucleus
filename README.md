@@ -4,7 +4,7 @@ A lightweight, portable local LLM environment with RAG (Retrieval Augmented Gene
 
 ## Features
 
-- Local LLM powered by Ollama (Qwen 2.5 Coder 14B)
+- Local LLM powered by Ollama (Qwen 2.5 Coder 32B)
 - RAG with vector database (chromem-go)
 - Persistent conversation history
 - Learns from your interactions

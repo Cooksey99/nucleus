@@ -1,5 +1,5 @@
 llm:
-  model: "qwen2.5-coder:14b"
+  model: "qwen2.5-coder:32b"
   base_url: "http://localhost:11434"
   temperature: 0.7
   context_length: 8192
