@@ -69,7 +69,7 @@ func New() (*Server, error) {
 func (s *Server) handleRequest(req Request) Response {
 	switch req.Type {
 	case "chat":
-		response, err := s.fileManager.Chat(s.ctx, req.Content)
+		response, err := s.fileManager.ChatWithTools(s.ctx, req.Content)
 		if err != nil {
 			return Response{Success: false, Error: err.Error()}
 		}

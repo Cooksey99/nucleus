@@ -26,11 +26,11 @@ type Manager struct {
 // Creates a new instance.
 func NewManager(cfg *config.Config, client *api.Client, ragMgr *rag.Manager) *Manager {
 	toolRegistry := tools.NewRegistry(cfg)
-	
+
 	toolRegistry.Register(tools.NewReadFileTool(cfg))
 	toolRegistry.Register(tools.NewListDirectoryTool(cfg))
 	toolRegistry.Register(tools.NewWriteFileTool(cfg))
-	
+
 	return &Manager{
 		config:       cfg,
 		client:       client,
@@ -38,7 +38,6 @@ func NewManager(cfg *config.Config, client *api.Client, ragMgr *rag.Manager) *Ma
 		toolRegistry: toolRegistry,
 	}
 }
-
 
 // Sends a message with file read/write tools enabled.
 // The LLM can request to read or modify files as needed.
@@ -54,15 +53,27 @@ func (m *Manager) ChatWithTools(ctx context.Context, userMessage string) (string
 	}
 
 	toolSpecs := m.toolRegistry.GetSpecs()
+	log.Printf("[DEBUG] Registered %d tools", len(toolSpecs))
 	toolNames := make([]string, 0, len(toolSpecs))
 	for _, spec := range toolSpecs {
 		toolNames = append(toolNames, spec.Function.Name)
+		log.Printf("[DEBUG] Tool: %s - %s", spec.Function.Name, spec.Function.Description)
 	}
+
+	systemPrompt := fmt.Sprintf(`%s
+
+IMPORTANT: You have access to the following tools that you MUST use when appropriate:
+- read_file: Use this to read file contents. You must call this tool to see file contents.
+- write_file: Use this to create or modify files
+- list_directory: Use this to see what files exist in a directory
+
+When a user asks about file contents, you MUST call the appropriate tool. Do not pretend or say you will read a file - actually call the tool.
+Available tools: %s`, m.config.SystemPrompt, strings.Join(toolNames, ", "))
 
 	messages := []api.Message{
 		{
 			Role:    "system",
-			Content: fmt.Sprintf("%s\n\nYou have access to these tools: %s", m.config.SystemPrompt, strings.Join(toolNames, ", ")),
+			Content: systemPrompt,
 		},
 		{
 			Role:    "user",
@@ -81,10 +92,12 @@ func (m *Manager) ChatWithTools(ctx context.Context, userMessage string) (string
 		}
 
 		var currentMsg api.Message
+		var responseBuilder strings.Builder
 		err = m.client.Chat(ctx, req, func(resp api.ChatResponse) error {
 			currentMsg = resp.Message
 			if resp.Message.Content != "" {
 				fmt.Print(resp.Message.Content)
+				responseBuilder.WriteString(resp.Message.Content)
 			}
 			return nil
 		})
@@ -93,13 +106,22 @@ func (m *Manager) ChatWithTools(ctx context.Context, userMessage string) (string
 			return "", fmt.Errorf("chat failed: %w", err)
 		}
 
+		log.Printf("[DEBUG] Tool calls: %d, Content length: %d", len(currentMsg.ToolCalls), len(responseBuilder.String()))
+
 		messages = append(messages, currentMsg)
 
 		if len(currentMsg.ToolCalls) == 0 {
-			return currentMsg.Content, nil
+			finalResponse := responseBuilder.String()
+			if finalResponse == "" {
+				finalResponse = currentMsg.Content
+			}
+			log.Printf("[DEBUG] Returning response, length: %d", len(finalResponse))
+			return finalResponse, nil
 		}
 
+		log.Printf("[DEBUG] Executing %d tool calls", len(currentMsg.ToolCalls))
 		for _, toolCall := range currentMsg.ToolCalls {
+			log.Printf("[DEBUG] Calling tool: %s", toolCall.Function.Name)
 			argsBytes, err := json.Marshal(toolCall.Function.Arguments)
 			if err != nil {
 				messages = append(messages, api.Message{
@@ -112,6 +134,9 @@ func (m *Manager) ChatWithTools(ctx context.Context, userMessage string) (string
 			result, err := m.toolRegistry.Execute(ctx, toolCall.Function.Name, argsBytes)
 			if err != nil {
 				result = fmt.Sprintf("Error: %v", err)
+				log.Printf("[DEBUG] Tool execution error: %v", err)
+			} else {
+				log.Printf("[DEBUG] Tool result length: %d", len(result))
 			}
 
 			messages = append(messages, api.Message{
@@ -119,6 +144,7 @@ func (m *Manager) ChatWithTools(ctx context.Context, userMessage string) (string
 				Content: result,
 			})
 		}
+		log.Printf("[DEBUG] Continuing loop to process tool results...")
 	}
 }
 
