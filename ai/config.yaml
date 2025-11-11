@@ -8,7 +8,7 @@ llm:
   top_p: 0.8
   min_p: 0
   repitition_penalty: 1.05
-  enable_thinking: true
+  enable_thinking: false
 
 system_prompt: |
   You are an expert AI assistant specializing in both programming and general brainstorming.
