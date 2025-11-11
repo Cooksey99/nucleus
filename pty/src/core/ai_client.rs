@@ -23,6 +23,35 @@ struct StreamChunk {
 pub struct AiClient;
 
 impl AiClient {
+    fn strip_think_tags(text: &str) -> String {
+        let mut result = String::new();
+        let mut in_think = false;
+        let mut i = 0;
+        let bytes = text.as_bytes();
+        
+        while i < bytes.len() {
+            if i + 7 <= bytes.len() && &bytes[i..i+7] == b"<think>" {
+                in_think = true;
+                i += 7;
+                continue;
+            }
+            
+            if i + 8 <= bytes.len() && &bytes[i..i+8] == b"</think>" {
+                in_think = false;
+                i += 8;
+                continue;
+            }
+            
+            if !in_think {
+                result.push(bytes[i] as char);
+            }
+            
+            i += 1;
+        }
+        
+        result.trim().to_string()
+    }
+
     pub fn send_request(request_type: &str, content: &str, pwd: Option<&str>) -> Result<String> {
         let mut stream = UnixStream::connect(SOCKET_PATH)
             .context("Failed to connect to AI server. Is it running?")?;
@@ -42,7 +71,6 @@ impl AiClient {
         stream.write_all(b"\n")?;
         stream.flush()?;
 
-        // Read and process streaming chunks
         use std::io::BufRead;
         let buf_reader = std::io::BufReader::new(stream);
         let mut result = String::new();
@@ -58,14 +86,12 @@ impl AiClient {
             
             match chunk.r#type.as_str() {
                 "chunk" => {
-                    // Print chunk immediately for real-time display
                     print!("{}", chunk.content);
                     use std::io::Write;
                     std::io::stdout().flush()?;
                     result.push_str(&chunk.content);
                 }
                 "done" => {
-                    // Final response
                     if !chunk.content.is_empty() {
                         result = chunk.content;
                     }
@@ -81,7 +107,7 @@ impl AiClient {
             }
         }
         
-        Ok(result)
+        Ok(Self::strip_think_tags(&result))
     }
 
     pub fn chat(query: &str, pwd: Option<&str>) -> Result<String> {

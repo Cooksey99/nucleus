@@ -1,13 +1,23 @@
 use anyhow::Result;
 use std::io::Write;
 
+/// Represents the current interaction mode of the PTY.
 #[derive(Debug)]
 pub enum Mode {
+    /// Standard terminal mode for executing shell commands.
     Terminal,
+    /// AI interaction mode for conversing with the AI assistant.
     AI,
 }
 
 impl Mode {
+    /// Returns the text prefix for this mode.
+    /// 
+    /// # Example
+    /// ```
+    /// assert_eq!(Mode::Terminal.prefix(), "[$]");
+    /// assert_eq!(Mode::AI.prefix(), "[AI]");
+    /// ```
     pub fn prefix(&self) -> &str {
         match self {
             Mode::Terminal => "[$]",
@@ -15,6 +25,15 @@ impl Mode {
         }
     }
 
+    /// Returns a colored ANSI prompt string for this mode.
+    /// 
+    /// Terminal mode displays in green, AI mode in magenta.
+    /// 
+    /// # Example
+    /// ```
+    /// let prompt = Mode::Terminal.colored_prompt();
+    /// // Returns: "\x1b[0;32m[$]\x1b[0m "
+    /// ```
     pub fn colored_prompt(&self) -> String {
         match self {
             Mode::Terminal => format!("\x1b[0;32m{}\x1b[0m ", self.prefix()),
@@ -23,6 +42,10 @@ impl Mode {
     }
 }
 
+/// Tracks the current state of input processing.
+/// 
+/// Manages the current mode, line buffer (current line being typed),
+/// and input buffer (for AI mode character-by-character input).
 pub struct InputState {
     mode: Mode,
     line_buffer: String,
@@ -30,6 +53,7 @@ pub struct InputState {
 }
 
 impl InputState {
+    /// Creates a new InputState starting in Terminal mode.
     pub fn new() -> Self {
         Self {
             mode: Mode::Terminal,
@@ -38,10 +62,19 @@ impl InputState {
         }
     }
 
+    /// Returns a reference to the current mode.
     pub fn mode(&self) -> &Mode {
         &self.mode
     }
 
+    /// Toggles between Terminal and AI modes.
+    /// 
+    /// # Example
+    /// ```
+    /// let mut state = InputState::new(); // starts in Terminal
+    /// state.toggle_mode(); // now AI
+    /// state.toggle_mode(); // back to Terminal
+    /// ```
     pub fn toggle_mode(&mut self) {
         self.mode = match self.mode {
             Mode::Terminal => Mode::AI,
@@ -49,43 +82,70 @@ impl InputState {
         };
     }
 
+    /// Clears both the line buffer and input buffer.
+    /// 
+    /// Called after processing a complete line of input.
     pub fn clear_buffers(&mut self) {
         self.line_buffer.clear();
         self.input_buffer.clear();
     }
 }
 
+/// Represents actions resulting from processing stdin input.
+/// 
+/// These actions are returned by `process_stdin` and handled by the IO loop.
 pub enum InputAction {
-    /// Toggle between interaction modes.
-    /// eg. terminal, AI
+    /// User requested to toggle between Terminal and AI modes (Ctrl-/).
     ToggleMode,
-    /// Single character input
+    /// A single character was typed and needs to be handled.
     CharacterInput(char),
+    /// A complete line was entered (newline/return pressed).
     LineComplete {
+        /// The parsed command text (e.g., "/ai query" in AI mode).
         cmd_text: String,
+        /// The raw line including the newline character.
         raw_line: String,
     },
 }
 
+/// Handles all keyboard input processing and mode management.
+/// 
+/// The InputHandler processes raw stdin bytes, manages input state,
+/// handles character-by-character input, and generates InputActions.
 pub struct InputHandler {
     state: InputState,
 }
 
 impl InputHandler {
+    /// Creates a new InputHandler with default state.
     pub fn new() -> Self {
         Self {
             state: InputState::new(),
         }
     }
 
+    /// Returns an immutable reference to the input state.
     pub fn state(&self) -> &InputState {
         &self.state
     }
 
+    /// Returns a mutable reference to the input state.
     pub fn state_mut(&mut self) -> &mut InputState {
         &mut self.state
     }
 
+    /// Processes raw stdin bytes and generates input actions.
+    /// 
+    /// Handles special key combinations (Ctrl-/), accumulates characters
+    /// into the line buffer, and detects complete lines.
+    /// 
+    /// # Special Handling
+    /// - Ctrl-/ (byte 31) triggers mode toggle
+    /// - In AI mode: "/exit" or "/quit" triggers mode toggle
+    /// - In AI mode: non-slash input is prefixed with "/ai "
+    /// 
+    /// # Returns
+    /// A vector of InputActions to be processed by the IO loop.
     pub fn process_stdin(&mut self, buf: &[u8]) -> Result<Vec<InputAction>> {
         const CTRL_SLASH: u8 = 31;
 
@@ -128,6 +188,16 @@ impl InputHandler {
         Ok(actions)
     }
 
+    /// Handles the display and buffering of a single character.
+    /// 
+    /// Behavior differs based on mode:
+    /// - Terminal mode: forwards character directly to PTY writer
+    /// - AI mode: echoes to stdout and handles backspace (\x7f, \x08)
+    /// 
+    /// # Arguments
+    /// - `ch`: The character to process
+    /// - `writer`: PTY writer for Terminal mode
+    /// - `stdout`: Direct stdout for AI mode display
     pub fn handle_character(
         &mut self,
         ch: char,
@@ -157,6 +227,16 @@ impl InputHandler {
         Ok(())
     }
 
+    /// Updates the shell prompt to reflect the current mode.
+    /// 
+    /// Sends zsh commands to update PS1 with colored mode indicators:
+    /// - Terminal mode: green "[$]"
+    /// - AI mode: magenta "[AI]"
+    /// 
+    /// Also clears the screen for a clean visual transition.
+    /// 
+    /// # Note
+    /// Assumes zsh shell with prompt expansion syntax (%F).
     pub fn show_mode_indicator(&self, writer: &mut dyn Write) -> Result<()> {
         let prompt_command = match self.state.mode {
             Mode::Terminal => format!("export PS1='%F{{green}}{}%f '", self.state.mode.prefix()),
