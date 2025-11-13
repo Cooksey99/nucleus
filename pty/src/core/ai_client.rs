@@ -86,9 +86,6 @@ impl AiClient {
             
             match chunk.r#type.as_str() {
                 "chunk" => {
-                    print!("{}", chunk.content);
-                    use std::io::Write;
-                    std::io::stdout().flush()?;
                     result.push_str(&chunk.content);
                 }
                 "done" => {
