@@ -11,7 +11,7 @@ build: build-ai build-pty
 
 build-ai:
 	@echo "Building AI server..."
-	cd $(AI_DIR) && go build -o ../$(AI_SERVER) ./server.go
+	cd $(AI_DIR) && go build -o ../$(AI_SERVER) .
 
 build-pty:
 	@echo "Building PTY..."

@@ -14,6 +14,14 @@ type Config struct {
 	RAG             RAGConfig             `yaml:"rag"`
 	Storage         StorageConfig         `yaml:"storage"`
 	Personalization PersonalizationConfig `yaml:"personalization"`
+	Permission      Permission
+}
+
+// Permissions granted to the AI
+type Permission struct {
+	Read    bool
+	Write   bool
+	Command bool
 }
 
 // Contains settings for the language model.
@@ -56,6 +64,12 @@ func Load() (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
+
+	permissions := Permission{
+		true, true, true,
+	}
+
+	cfg.Permission = permissions
 
 	return &cfg, nil
 }
