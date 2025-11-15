@@ -47,11 +47,11 @@ type ParsedToolCall struct {
 // Parses tool calls from text output
 func parseToolCalls(text string) []ParsedToolCall {
 	var calls []ParsedToolCall
-	
+
 	// Match <tool_call>...</tool_call> blocks
 	toolCallRegex := regexp.MustCompile(`<tool_call>\s*<name>([^<]+)</name>\s*<arguments>({[^}]+})</arguments>\s*</tool_call>`)
 	matches := toolCallRegex.FindAllStringSubmatch(text, -1)
-	
+
 	for _, match := range matches {
 		if len(match) == 3 {
 			calls = append(calls, ParsedToolCall{
@@ -60,7 +60,7 @@ func parseToolCalls(text string) []ParsedToolCall {
 			})
 		}
 	}
-	
+
 	return calls
 }
 
@@ -145,7 +145,7 @@ You: <tool_call>
 			Content: systemPrompt,
 		},
 	}
-	
+
 	// Append conversation history if provided
 	log.Printf("[DEBUG] Received %d history messages", len(history))
 	if len(history) > 0 {
@@ -154,7 +154,7 @@ You: <tool_call>
 		}
 		messages = append(messages, history...)
 	}
-	
+
 	// Append current user message
 	messages = append(messages, api.Message{
 		Role:    "user",
@@ -187,7 +187,7 @@ You: <tool_call>
 		}
 
 		fullResponse := responseBuilder.String()
-		
+
 		// Parse tool calls from response text
 		toolCalls := parseToolCalls(fullResponse)
 		log.Printf("[DEBUG] Parsed %d tool calls from response", len(toolCalls))
@@ -209,7 +209,7 @@ You: <tool_call>
 		log.Printf("[DEBUG] Executing %d tool calls", len(toolCalls))
 		for _, toolCall := range toolCalls {
 			log.Printf("[DEBUG] Calling tool: %s with args: %s", toolCall.Name, toolCall.Arguments)
-			
+
 			result, err := m.toolRegistry.Execute(ctx, toolCall.Name, []byte(toolCall.Arguments))
 			if err != nil {
 				result = fmt.Sprintf("Error: %v", err)
