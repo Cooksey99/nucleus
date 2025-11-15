@@ -7,9 +7,10 @@ import (
 	"os"
 	"strings"
 
+	"llm-workspace/chat"
 	"llm-workspace/config"
-	"llm-workspace/fileops"
 	"llm-workspace/rag"
+	"llm-workspace/tools"
 
 	"github.com/ollama/ollama/api"
 )
@@ -30,7 +31,8 @@ func Run() error {
 		return fmt.Errorf("failed to initialize RAG: %w", err)
 	}
 
-	fileManager := fileops.NewManager(cfg, client, ragManager)
+	toolRegistry := tools.NewRegistry(cfg)
+	chatManager := chat.NewManager(cfg, client, ragManager, toolRegistry)
 
 	fmt.Println("Local LLM with RAG Ready!")
 	fmt.Printf("Model: %s\n", cfg.LLM.Model)
@@ -90,7 +92,7 @@ func Run() error {
 
 		if strings.HasPrefix(input, "/edit ") {
 			request := strings.TrimPrefix(input, "/edit ")
-			response, err := fileManager.ChatWithTools(ctx, request)
+			response, err := chatManager.ChatWithTools(ctx, request)
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 			} else if response != "" {
@@ -99,7 +101,7 @@ func Run() error {
 			continue
 		}
 
-		response, err := fileManager.Chat(ctx, input)
+		response, err := chatManager.Chat(ctx, input)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue

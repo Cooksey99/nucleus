@@ -24,10 +24,16 @@ type Registry struct {
 }
 
 func NewRegistry(cfg *config.Config) *Registry {
-	return &Registry{
+	r := &Registry{
 		tools: make(map[string]Tool),
 		cfg:   cfg,
 	}
+	
+	r.Register(NewReadFileTool(cfg))
+	r.Register(NewListDirectoryTool(cfg))
+	r.Register(NewWriteFileTool(cfg))
+	
+	return r
 }
 
 func (r *Registry) Register(tool Tool) {

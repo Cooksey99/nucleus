@@ -11,9 +11,10 @@ import (
 	"strings"
 	"syscall"
 
+	"llm-workspace/chat"
 	"llm-workspace/config"
-	"llm-workspace/fileops"
 	"llm-workspace/rag"
+	"llm-workspace/tools"
 
 	"github.com/ollama/ollama/api"
 )
@@ -48,7 +49,7 @@ type Server struct {
 	cfg         *config.Config
 	client      *api.Client
 	ragManager  *rag.Manager
-	fileManager *fileops.Manager
+	chatManager *chat.Manager
 	ctx         context.Context
 }
 
@@ -68,13 +69,14 @@ func New() (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize RAG: %w", err)
 	}
 
-	fileManager := fileops.NewManager(cfg, client, ragManager)
+	toolRegistry := tools.NewRegistry(cfg)
+	chatManager := chat.NewManager(cfg, client, ragManager, toolRegistry)
 
 	return &Server{
 		cfg:         cfg,
 		client:      client,
 		ragManager:  ragManager,
-		fileManager: fileManager,
+		chatManager: chatManager,
 		ctx:         context.Background(),
 	}, nil
 }
@@ -82,14 +84,14 @@ func New() (*Server, error) {
 func (s *Server) handleRequest(req Request) Response {
 	switch req.Type {
 	case "chat":
-		response, err := s.fileManager.ChatWithTools(s.ctx, req.Content)
+		response, err := s.chatManager.ChatWithTools(s.ctx, req.Content)
 		if err != nil {
 			return Response{Success: false, Error: err.Error()}
 		}
 		return Response{Success: true, Content: response}
 
 	case "edit":
-		response, err := s.fileManager.ChatWithTools(s.ctx, req.Content)
+		response, err := s.chatManager.ChatWithTools(s.ctx, req.Content)
 		if err != nil {
 			return Response{Success: false, Error: err.Error()}
 		}
@@ -138,7 +140,7 @@ func (s *Server) handleConnectionStreaming(conn net.Conn, req Request) {
 		}
 		
 		// For chat/edit, stream the response in real-time
-		response, err := s.fileManager.ChatWithToolsStream(s.ctx, req.Content, history, func(chunk string) {
+		response, err := s.chatManager.ChatWithToolsStream(s.ctx, req.Content, history, func(chunk string) {
 			// Send each chunk as it arrives
 			streamChunk := StreamChunk{Type: "chunk", Content: chunk}
 			if err := encoder.Encode(streamChunk); err != nil {

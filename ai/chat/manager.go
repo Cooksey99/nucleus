@@ -1,5 +1,5 @@
-// Package fileops provides file operations and LLM tool calling functionality.
-package fileops
+// Package chat provides LLM interaction with tool support.
+package chat
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
-// Handles file operations and chat with tool support.
 type Manager struct {
 	config       *config.Config
 	client       *api.Client
@@ -23,19 +22,12 @@ type Manager struct {
 	toolRegistry *tools.Registry
 }
 
-// Creates a new instance.
-func NewManager(cfg *config.Config, client *api.Client, ragMgr *rag.Manager) *Manager {
-	toolRegistry := tools.NewRegistry(cfg)
-
-	toolRegistry.Register(tools.NewReadFileTool(cfg))
-	toolRegistry.Register(tools.NewListDirectoryTool(cfg))
-	toolRegistry.Register(tools.NewWriteFileTool(cfg))
-
+func NewManager(cfg *config.Config, client *api.Client, ragMgr *rag.Manager, toolReg *tools.Registry) *Manager {
 	return &Manager{
 		config:       cfg,
 		client:       client,
 		ragManager:   ragMgr,
-		toolRegistry: toolRegistry,
+		toolRegistry: toolReg,
 	}
 }
 
@@ -44,11 +36,9 @@ type ParsedToolCall struct {
 	Arguments string
 }
 
-// Parses tool calls from text output
 func parseToolCalls(text string) []ParsedToolCall {
 	var calls []ParsedToolCall
 
-	// Match <tool_call>...</tool_call> blocks
 	toolCallRegex := regexp.MustCompile(`<tool_call>\s*<name>([^<]+)</name>\s*<arguments>({[^}]+})</arguments>\s*</tool_call>`)
 	matches := toolCallRegex.FindAllStringSubmatch(text, -1)
 
@@ -64,22 +54,17 @@ func parseToolCalls(text string) []ParsedToolCall {
 	return calls
 }
 
-// Removes tool call XML from text
 func removeToolCalls(text string) string {
 	toolCallRegex := regexp.MustCompile(`<tool_call>.*?</tool_call>`)
 	return strings.TrimSpace(toolCallRegex.ReplaceAllString(text, ""))
 }
 
-// Callback function type for streaming responses
 type StreamCallback func(chunk string)
 
-// Sends a message with file read/write tools enabled.
-// The LLM can request to read or modify files as needed.
 func (m *Manager) ChatWithTools(ctx context.Context, userMessage string) (string, error) {
 	return m.ChatWithToolsStream(ctx, userMessage, nil, nil)
 }
 
-// ChatWithToolsStream allows streaming responses via callback
 func (m *Manager) ChatWithToolsStream(ctx context.Context, userMessage string, history []api.Message, streamCallback StreamCallback) (string, error) {
 	relevantContext, err := m.ragManager.RetrieveContext(ctx, userMessage)
 	if err != nil {
@@ -99,7 +84,6 @@ func (m *Manager) ChatWithToolsStream(ctx context.Context, userMessage string, h
 		log.Printf("[DEBUG] Tool: %s - %s", spec.Function.Name, spec.Function.Description)
 	}
 
-	// Build tool descriptions
 	var toolDescriptions strings.Builder
 	for _, spec := range toolSpecs {
 		toolDescriptions.WriteString(fmt.Sprintf("\n- %s: %s", spec.Function.Name, spec.Function.Description))
@@ -146,7 +130,6 @@ You: <tool_call>
 		},
 	}
 
-	// Append conversation history if provided
 	log.Printf("[DEBUG] Received %d history messages", len(history))
 	if len(history) > 0 {
 		for i, msg := range history {
@@ -155,7 +138,6 @@ You: <tool_call>
 		messages = append(messages, history...)
 	}
 
-	// Append current user message
 	messages = append(messages, api.Message{
 		Role:    "user",
 		Content: userMessageWithContext,
@@ -173,7 +155,6 @@ You: <tool_call>
 		var responseBuilder strings.Builder
 		err = m.client.Chat(ctx, req, func(resp api.ChatResponse) error {
 			if resp.Message.Content != "" {
-				// Stream to callback if provided
 				if streamCallback != nil {
 					streamCallback(resp.Message.Content)
 				}
@@ -188,24 +169,20 @@ You: <tool_call>
 
 		fullResponse := responseBuilder.String()
 
-		// Parse tool calls from response text
 		toolCalls := parseToolCalls(fullResponse)
 		log.Printf("[DEBUG] Parsed %d tool calls from response", len(toolCalls))
 
-		// Add assistant message to history
 		messages = append(messages, api.Message{
 			Role:    "assistant",
 			Content: fullResponse,
 		})
 
-		// If no tool calls, return the response (minus any tool call XML)
 		if len(toolCalls) == 0 {
 			cleanResponse := removeToolCalls(fullResponse)
 			log.Printf("[DEBUG] Returning response, length: %d", len(cleanResponse))
 			return cleanResponse, nil
 		}
 
-		// Execute tool calls
 		log.Printf("[DEBUG] Executing %d tool calls", len(toolCalls))
 		for _, toolCall := range toolCalls {
 			log.Printf("[DEBUG] Calling tool: %s with args: %s", toolCall.Name, toolCall.Arguments)
@@ -218,7 +195,6 @@ You: <tool_call>
 				log.Printf("[DEBUG] Tool result length: %d", len(result))
 			}
 
-			// Add tool result to message history
 			messages = append(messages, api.Message{
 				Role:    "user",
 				Content: fmt.Sprintf("Tool '%s' result:\n%s", toolCall.Name, result),
@@ -228,8 +204,6 @@ You: <tool_call>
 	}
 }
 
-// Sends a message without tool calling enabled.
-// Retrieves relevant context from RAG before generating a response.
 func (m *Manager) Chat(ctx context.Context, userMessage string) (string, error) {
 	relevantContext, err := m.ragManager.RetrieveContext(ctx, userMessage)
 	if err != nil {
