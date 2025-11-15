@@ -6,11 +6,53 @@ use std::time::Duration;
 
 const SOCKET_PATH: &str = "/tmp/llm-workspace.sock";
 
+#[derive(Serialize, Clone)]
+pub struct Message {
+    role: String,
+    content: String,
+}
+
+#[derive(Default)]
+pub struct ConversationHistory {
+    messages: Vec<Message>,
+}
+
+impl ConversationHistory {
+    pub fn new() -> Self {
+        Self {
+            messages: Vec::new(),
+        }
+    }
+
+    pub fn add_user_message(&mut self, content: String) {
+        self.messages.push(Message {
+            role: "user".to_string(),
+            content,
+        });
+    }
+
+    pub fn add_assistant_message(&mut self, content: String) {
+        self.messages.push(Message {
+            role: "assistant".to_string(),
+            content,
+        });
+    }
+
+    pub fn get_messages(&self) -> &[Message] {
+        &self.messages
+    }
+
+    pub fn clear(&mut self) {
+        self.messages.clear();
+    }
+}
+
 #[derive(Serialize)]
 struct Request {
     r#type: String,
     content: String,
     pwd: Option<String>,
+    history: Option<Vec<Message>>,
 }
 
 #[derive(Deserialize)]
@@ -52,7 +94,12 @@ impl AiClient {
         result.trim().to_string()
     }
 
-    pub fn send_request(request_type: &str, content: &str, pwd: Option<&str>) -> Result<String> {
+    pub fn send_request(
+        request_type: &str,
+        content: &str,
+        pwd: Option<&str>,
+        history: Option<&ConversationHistory>,
+    ) -> Result<String> {
         let mut stream = UnixStream::connect(SOCKET_PATH)
             .context("Failed to connect to AI server. Is it running?")?;
 
@@ -60,13 +107,17 @@ impl AiClient {
         stream.set_read_timeout(Some(Duration::from_secs(300))).ok();
         stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
 
+        let history_msgs = history.map(|h| h.get_messages().to_vec());
+
         let request = Request {
             r#type: request_type.to_string(),
             content: content.to_string(),
             pwd: pwd.map(|s| s.to_string()),
+            history: history_msgs.clone(),
         };
 
         let json = serde_json::to_string(&request)?;
+        eprintln!("[DEBUG] Sending request with {} history messages", history_msgs.as_ref().map(|h| h.len()).unwrap_or(0));
         stream.write_all(json.as_bytes())?;
         stream.write_all(b"\n")?;
         stream.flush()?;
@@ -86,9 +137,6 @@ impl AiClient {
             
             match chunk.r#type.as_str() {
                 "chunk" => {
-                    print!("{}", chunk.content);
-                    use std::io::Write;
-                    std::io::stdout().flush()?;
                     result.push_str(&chunk.content);
                 }
                 "done" => {
@@ -110,23 +158,23 @@ impl AiClient {
         Ok(Self::strip_think_tags(&result))
     }
 
-    pub fn chat(query: &str, pwd: Option<&str>) -> Result<String> {
-        Self::send_request("chat", query, pwd)
+    pub fn chat(query: &str, pwd: Option<&str>, history: Option<&ConversationHistory>) -> Result<String> {
+        Self::send_request("chat", query, pwd, history)
     }
 
-    pub fn edit(request: &str, pwd: Option<&str>) -> Result<String> {
-        Self::send_request("edit", request, pwd)
+    pub fn edit(request: &str, pwd: Option<&str>, history: Option<&ConversationHistory>) -> Result<String> {
+        Self::send_request("edit", request, pwd, history)
     }
 
     pub fn add_knowledge(content: &str) -> Result<String> {
-        Self::send_request("add", content, None)
+        Self::send_request("add", content, None, None)
     }
 
     pub fn index_directory(path: &str) -> Result<String> {
-        Self::send_request("index", path, None)
+        Self::send_request("index", path, None, None)
     }
 
     pub fn stats() -> Result<String> {
-        Self::send_request("stats", "", None)
+        Self::send_request("stats", "", None, None)
     }
 }

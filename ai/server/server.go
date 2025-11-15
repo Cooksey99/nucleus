@@ -20,9 +20,16 @@ import (
 
 const SocketPath = "/tmp/llm-workspace.sock"
 
-type Request struct {
-	Type    string `json:"type"`
+type Message struct {
+	Role    string `json:"role"`
 	Content string `json:"content"`
+}
+
+type Request struct {
+	Type    string     `json:"type"`
+	Content string     `json:"content"`
+	Pwd     *string    `json:"pwd,omitempty"`
+	History *[]Message `json:"history,omitempty"`
 }
 
 type Response struct {
@@ -119,8 +126,19 @@ func (s *Server) handleConnectionStreaming(conn net.Conn, req Request) {
 	
 	switch req.Type {
 	case "chat", "edit":
+		// Convert history to api.Message format
+		var history []api.Message
+		if req.History != nil {
+			for _, msg := range *req.History {
+				history = append(history, api.Message{
+					Role:    msg.Role,
+					Content: msg.Content,
+				})
+			}
+		}
+		
 		// For chat/edit, stream the response in real-time
-		response, err := s.fileManager.ChatWithToolsStream(s.ctx, req.Content, func(chunk string) {
+		response, err := s.fileManager.ChatWithToolsStream(s.ctx, req.Content, history, func(chunk string) {
 			// Send each chunk as it arrives
 			streamChunk := StreamChunk{Type: "chunk", Content: chunk}
 			if err := encoder.Encode(streamChunk); err != nil {
