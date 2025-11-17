@@ -1,6 +1,6 @@
+use crate::utils::{ModeTheme, Theme};
 use anyhow::Result;
 use std::io::Write;
-use crate::utils::{Theme, ModeTheme};
 
 /// Represents the current interaction mode of the PTY.
 #[derive(Debug)]
@@ -22,7 +22,7 @@ impl Mode {
 }
 
 /// Tracks the current state of input processing.
-/// 
+///
 /// Manages the current mode, line buffer (current line being typed),
 /// and input buffer (for AI mode character-by-character input).
 pub struct InputState {
@@ -47,7 +47,7 @@ impl InputState {
     }
 
     /// Toggles between Terminal and AI modes.
-    /// 
+    ///
     /// # Example
     /// ```
     /// let mut state = InputState::new(); // starts in Terminal
@@ -62,7 +62,7 @@ impl InputState {
     }
 
     /// Clears both the line buffer and input buffer.
-    /// 
+    ///
     /// Called after processing a complete line of input.
     pub fn clear_buffers(&mut self) {
         self.line_buffer.clear();
@@ -71,7 +71,7 @@ impl InputState {
 }
 
 /// Represents actions resulting from processing stdin input.
-/// 
+///
 /// These actions are returned by `process_stdin` and handled by the IO loop.
 pub enum InputAction {
     /// User requested to toggle between Terminal and AI modes (Ctrl-/).
@@ -88,7 +88,7 @@ pub enum InputAction {
 }
 
 /// Handles all keyboard input processing and mode management.
-/// 
+///
 /// The InputHandler processes raw stdin bytes, manages input state,
 /// handles character-by-character input, and generates InputActions.
 pub struct InputHandler {
@@ -130,15 +130,15 @@ impl InputHandler {
     }
 
     /// Processes raw stdin bytes and generates input actions.
-    /// 
+    ///
     /// Handles special key combinations (Ctrl-/), accumulates characters
     /// into the line buffer, and detects complete lines.
-    /// 
+    ///
     /// # Special Handling
     /// - Ctrl-/ (byte 31) triggers mode toggle
     /// - In AI mode: "/exit" or "/quit" triggers mode toggle
     /// - In AI mode: non-slash input is prefixed with "/ai "
-    /// 
+    ///
     /// # Returns
     /// A vector of InputActions to be processed by the IO loop.
     pub fn process_stdin(&mut self, buf: &[u8]) -> Result<Vec<InputAction>> {
@@ -176,7 +176,6 @@ impl InputHandler {
                 self.state.clear_buffers();
             } else {
                 actions.push(InputAction::CharacterInput(ch));
-                self.state.line_buffer.push(ch);
             }
         }
 
@@ -184,11 +183,11 @@ impl InputHandler {
     }
 
     /// Handles the display and buffering of a single character.
-    /// 
+    ///
     /// Behavior differs based on mode:
     /// - Terminal mode: forwards character directly to PTY writer (shell echoes back)
     /// - AI mode: echoes to stdout and handles backspace (\x7f, \x08)
-    /// 
+    ///
     /// # Arguments
     /// - `ch`: The character to process
     /// - `writer`: PTY writer for Terminal mode
@@ -223,7 +222,7 @@ impl InputHandler {
     }
 
     /// Updates the shell prompt to reflect the current mode.
-    /// 
+    ///
     /// Sends zsh commands to update PS1 with themed mode indicators.
     /// Also clears the screen for a clean visual transition.
     pub fn show_mode_indicator(&self, writer: &mut dyn Write) -> Result<()> {
