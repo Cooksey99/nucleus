@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::io::Write;
+use crate::utils::Theme;
 
 /// Handles rendering output to the terminal with various formatting capabilities.
 ///
@@ -7,17 +8,21 @@ use std::io::Write;
 /// different types of content like PTY output, command responses, errors, and prompts.
 pub struct OutputHandler {
     stdout: Box<dyn Write + Send>,
+    theme: Theme,
 }
 
 impl OutputHandler {
     /// Creates a new OutputHandler with the given writer.
-    ///
-    /// # Example
-    /// ```
-    /// let handler = OutputHandler::new(Box::new(std::io::stdout()));
-    /// ```
     pub fn new(stdout: Box<dyn Write + Send>) -> Self {
-        Self { stdout }
+        Self { 
+            stdout,
+            theme: Theme::default(),
+        }
+    }
+
+    /// Creates a new OutputHandler with a custom theme.
+    pub fn with_theme(stdout: Box<dyn Write + Send>, theme: Theme) -> Self {
+        Self { stdout, theme }
     }
 
     /// Renders raw PTY output directly to the terminal.
@@ -57,16 +62,10 @@ impl OutputHandler {
         Ok(())
     }
 
-    /// Renders an error message with "Error: " prefix.
-    ///
-    /// # Example
-    /// ```
-    /// handler.render_error("Connection failed")?;
-    /// // Output: Error: Connection failed
-    /// ```
+    /// Renders an error message with "Error: " prefix, styled with theme.
     pub fn render_error(&mut self, error: &str) -> Result<()> {
-        let error_msg = format!("Error: {}\r\n", error);
-        self.stdout.write_all(error_msg.as_bytes())?;
+        let styled_error = self.theme.messages.error.apply_to(format!("Error: {}", error));
+        self.stdout.write_all(format!("{}\r\n", styled_error).as_bytes())?;
         self.stdout.flush()?;
         Ok(())
     }

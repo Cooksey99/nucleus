@@ -69,7 +69,7 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
                                     }
 
                                     if matches!(input_handler.state().mode(), Mode::AI) {
-                                        let prompt = input_handler.state().mode().colored_prompt();
+                                        let prompt = input_handler.colored_prompt();
                                         output_handler.render_prompt(&prompt)?;
                                     }
                                 }

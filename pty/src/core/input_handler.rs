@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::io::Write;
+use crate::utils::{Theme, ModeTheme};
 
 /// Represents the current interaction mode of the PTY.
 #[derive(Debug)]
@@ -11,33 +12,11 @@ pub enum Mode {
 }
 
 impl Mode {
-    /// Returns the text prefix for this mode.
-    /// 
-    /// # Example
-    /// ```
-    /// assert_eq!(Mode::Terminal.prefix(), "[$]");
-    /// assert_eq!(Mode::AI.prefix(), "[AI]");
-    /// ```
-    pub fn prefix(&self) -> &str {
+    /// Returns the theme for this mode
+    pub fn theme<'a>(&self, theme: &'a Theme) -> &'a ModeTheme {
         match self {
-            Mode::Terminal => "[$]",
-            Mode::AI => "[AI]",
-        }
-    }
-
-    /// Returns a colored ANSI prompt string for this mode.
-    /// 
-    /// Terminal mode displays in green, AI mode in magenta.
-    /// 
-    /// # Example
-    /// ```
-    /// let prompt = Mode::Terminal.colored_prompt();
-    /// // Returns: "\x1b[0;32m[$]\x1b[0m "
-    /// ```
-    pub fn colored_prompt(&self) -> String {
-        match self {
-            Mode::Terminal => format!("\x1b[0;32m{}\x1b[0m ", self.prefix()),
-            Mode::AI => format!("\x1b[0;35m{}\x1b[0m ", self.prefix()),
+            Mode::Terminal => &theme.terminal_mode,
+            Mode::AI => &theme.ai_mode,
         }
     }
 }
@@ -114,13 +93,23 @@ pub enum InputAction {
 /// handles character-by-character input, and generates InputActions.
 pub struct InputHandler {
     state: InputState,
+    theme: Theme,
 }
 
 impl InputHandler {
-    /// Creates a new InputHandler with default state.
+    /// Creates a new InputHandler with default state and theme.
     pub fn new() -> Self {
         Self {
             state: InputState::new(),
+            theme: Theme::default(),
+        }
+    }
+
+    /// Creates a new InputHandler with a custom theme.
+    pub fn with_theme(theme: Theme) -> Self {
+        Self {
+            state: InputState::new(),
+            theme,
         }
     }
 
@@ -132,6 +121,12 @@ impl InputHandler {
     /// Returns a mutable reference to the input state.
     pub fn state_mut(&mut self) -> &mut InputState {
         &mut self.state
+    }
+
+    /// Returns the colored prompt string for the current mode.
+    pub fn colored_prompt(&self) -> String {
+        let mode_theme = self.state.mode.theme(&self.theme);
+        mode_theme.render_prompt()
     }
 
     /// Processes raw stdin bytes and generates input actions.
@@ -201,7 +196,7 @@ impl InputHandler {
     pub fn handle_character(
         &mut self,
         ch: char,
-        writer: &mut dyn Write,
+        _writer: &mut dyn Write,
         stdout: &mut dyn Write,
     ) -> Result<()> {
         match self.state.mode {
@@ -228,19 +223,11 @@ impl InputHandler {
 
     /// Updates the shell prompt to reflect the current mode.
     /// 
-    /// Sends zsh commands to update PS1 with colored mode indicators:
-    /// - Terminal mode: green "[$]"
-    /// - AI mode: magenta "[AI]"
-    /// 
+    /// Sends zsh commands to update PS1 with themed mode indicators.
     /// Also clears the screen for a clean visual transition.
-    /// 
-    /// # Note
-    /// Assumes zsh shell with prompt expansion syntax (%F).
     pub fn show_mode_indicator(&self, writer: &mut dyn Write) -> Result<()> {
-        let prompt_command = match self.state.mode {
-            Mode::Terminal => format!("export PS1='%F{{green}}{}%f '", self.state.mode.prefix()),
-            Mode::AI => format!("export PS1='%F{{magenta}}{}%f '", self.state.mode.prefix()),
-        };
+        let mode_theme = self.state.mode.theme(&self.theme);
+        let prompt_command = mode_theme.zsh_prompt_command();
 
         writer.write_all(prompt_command.as_bytes())?;
         writer.write_all(b"\n")?;
