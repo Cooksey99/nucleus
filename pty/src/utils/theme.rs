@@ -111,22 +111,16 @@ impl ModeTheme {
         self.primary_color.apply_to(base).to_string()
     }
 
-    /// Generates zsh PS1 string with colors
-    /// This updates your shell prompt to match the mode
+    /// Generates zsh command to prepend mode indicator to existing prompt
     pub fn zsh_prompt_command(&self) -> String {
         let color = self.zsh_color.as_str();
-        
-        if let Some(label) = self.label {
-            format!(
-                "export PS1='%B%F{{{color}}}{} {} %F{{240}}│%f%b '",
-                self.symbol, label
-            )
+        let mode_indicator = if let Some(label) = self.label {
+            format!("%B%F{{{color}}}{} {} %F{{240}}│%f%b ", self.symbol, label)
         } else {
-            format!(
-                "export PS1='%B%F{{{color}}}{}%f%b '",
-                self.symbol
-            )
-        }
+            format!("%B%F{{{color}}}{}%f%b ", self.symbol)
+        };
+        
+        format!("export PS1='{}${{OLD_PS1:-%# }}'", mode_indicator)
     }
 }
 

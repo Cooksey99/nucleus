@@ -22,8 +22,13 @@ fn main() -> Result<()> {
     let terminal_size = get_terminal_size();
     let pair = pty_system.openpty(terminal_size)?;
 
-    // Spawn shell
-    let cmd = CommandBuilder::new(shell);
+    // Spawn shell as interactive shell with explicit .zshrc sourcing
+    let mut cmd = CommandBuilder::new(&shell);
+    cmd.arg("-i");  // Interactive shell
+    cmd.arg("-c");  // Execute command
+    cmd.arg("source ~/.zshrc 2>/dev/null; exec zsh -i");  // Source config then start interactive shell
+    // Ensure proper environment for shell initialization
+    cmd.env("TERM", "xterm-256color");
     let _child = pair.slave.spawn_command(cmd).unwrap();
 
     // Slave isn't needed, so it can be dropped
