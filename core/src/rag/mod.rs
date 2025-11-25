@@ -1,7 +1,64 @@
 //! Retrieval Augmented Generation (RAG) system.
 //!
-//! Provides document indexing, embedding generation, and semantic search
-//! for context-aware AI responses.
+//! This module implements a complete RAG pipeline for enhancing LLM responses
+//! with relevant context from a knowledge base.
+//!
+//! # Overview
+//!
+//! RAG (Retrieval Augmented Generation) is a technique that combines:
+//! 1. **Retrieval**: Finding relevant documents from a knowledge base
+//! 2. **Augmentation**: Adding those documents as context to the LLM prompt
+//! 3. **Generation**: The LLM generates a response using the added context
+//!
+//! This results in more accurate, up-to-date responses grounded in your data.
+//!
+//! # Architecture
+//!
+//! The RAG system consists of four main components:
+//!
+//! - [`Manager`]: Orchestrates the entire RAG pipeline
+//! - [`embedder`]: Converts text to vector embeddings via Ollama
+//! - [`store`]: In-memory vector database with similarity search
+//! - [`indexer`]: File collection and text chunking utilities
+//!
+//! # Usage
+//!
+//! ```no_run
+//! # use core::{config::Config, ollama::Client, rag::Manager};
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # let config = Config::load_default()?;
+//! # let ollama_client = Client::new("http://localhost:11434");
+//! let rag = Manager::new(&config, ollama_client);
+//!
+//! // Index a directory
+//! let count = rag.index_directory("/path/to/code").await?;
+//! println!("Indexed {} files", count);
+//!
+//! // Add individual knowledge
+//! rag.add_knowledge("Rust is a systems programming language", "manual").await?;
+//!
+//! // Retrieve context for a query
+//! let context = rag.retrieve_context("What is Rust?").await?;
+//! println!("Context: {}", context);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # How It Works
+//!
+//! 1. **Indexing Phase**:
+//!    - Documents are split into chunks (default: 512 bytes with 50 byte overlap)
+//!    - Each chunk is converted to a vector embedding
+//!    - Embeddings are stored in the vector database
+//!
+//! 2. **Retrieval Phase**:
+//!    - User query is converted to a vector embedding  
+//!    - Vector database finds the top-k most similar document chunks
+//!    - Similar chunks are returned as context
+//!
+//! 3. **Generation Phase** (handled by chat manager):
+//!    - Context is added to the LLM prompt
+//!    - LLM generates response using the context
 
 mod embedder;
 mod indexer;
@@ -31,7 +88,24 @@ pub enum RagError {
 
 pub type Result<T> = std::result::Result<T, RagError>;
 
-/// Manages the RAG system including embeddings and vector storage.
+/// The main RAG manager orchestrating all components.
+///
+/// The manager ties together the embedder, vector store, and indexer to provide
+/// a high-level API for RAG operations. It handles the complete pipeline from
+/// document ingestion to context retrieval.
+///
+/// # Thread Safety
+///
+/// The manager is `Clone` and can be safely shared across threads. The underlying
+/// vector store uses `Arc<RwLock>` for thread-safe access.
+///
+/// # Configuration
+///
+/// The manager uses configuration from [`Config`]:
+/// - `rag.embedding_model`: Model for generating embeddings
+/// - `rag.chunk_size`: Size of text chunks in bytes
+/// - `rag.chunk_overlap`: Overlap between chunks in bytes
+/// - `rag.top_k`: Number of results to return from searches
 #[derive(Clone)]
 pub struct Manager {
     embedder: Embedder,
@@ -42,7 +116,27 @@ pub struct Manager {
 }
 
 impl Manager {
-    /// Creates a new RAG manager.
+    /// Creates a new RAG manager with the given configuration.
+    ///
+    /// Initializes all components: embedder, vector store, and configuration.
+    /// The knowledge base starts empty.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration including RAG settings
+    /// * `ollama_client` - Ollama client for embedding generation
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = Config::load_default()?;
+    /// let client = Client::new("http://localhost:11434");
+    /// let rag = Manager::new(&config, client);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(config: &Config, ollama_client: Client) -> Self {
         let embedder = Embedder::new(ollama_client, &config.rag.embedding_model);
         let store = VectorStore::new();
@@ -57,6 +151,38 @@ impl Manager {
     }
     
     /// Adds a single piece of text to the knowledge base.
+    ///
+    /// The text is embedded and stored as a single document. For large texts,
+    /// consider using [`index_directory`](Self::index_directory) which automatically
+    /// chunks content.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The text to add to the knowledge base
+    /// * `source` - Identifier for the source (e.g., "user_input", "api", "manual")
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if embedding generation fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = Config::load_default()?;
+    /// # let client = Client::new("http://localhost:11434");
+    /// let rag = Manager::new(&config, client);
+    ///
+    /// rag.add_knowledge(
+    ///     "Rust is a systems programming language",
+    ///     "manual_entry"
+    /// ).await?;
+    ///
+    /// println!("Knowledge base now has {} documents", rag.count());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn add_knowledge(&self, content: &str, source: &str) -> Result<()> {
         let embedding = self.embedder.embed(content).await?;
         
@@ -68,7 +194,45 @@ impl Manager {
         Ok(())
     }
     
-    /// Indexes all files in a directory.
+    /// Recursively indexes all code files in a directory.
+    ///
+    /// Walks the directory tree, collecting indexable files (see [`indexer`] for
+    /// supported extensions). Each file is:
+    /// 1. Read and split into chunks
+    /// 2. Each chunk is embedded
+    /// 3. Chunks are stored with file path and chunk index metadata
+    ///
+    /// Progress is printed to stdout as files are indexed.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir_path` - Root directory to index
+    ///
+    /// # Returns
+    ///
+    /// The number of files successfully indexed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The directory doesn't exist or isn't accessible
+    /// - Embedding generation fails for any chunk
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = Config::load_default()?;
+    /// # let client = Client::new("http://localhost:11434");
+    /// let rag = Manager::new(&config, client);
+    ///
+    /// let count = rag.index_directory("./src").await?;
+    /// println!("Indexed {} files", count);
+    /// println!("Total chunks in knowledge base: {}", rag.count());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn index_directory(&self, dir_path: &str) -> Result<usize> {
         let files = collect_files(dir_path).await?;
         let mut indexed_count = 0;
@@ -94,7 +258,51 @@ impl Manager {
         Ok(indexed_count)
     }
     
-    /// Retrieves relevant context for a query.
+    /// Retrieves relevant context from the knowledge base for a query.
+    ///
+    /// Converts the query to an embedding, searches for the top-k most similar
+    /// documents, and formats them as context that can be added to an LLM prompt.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The question or text to find relevant context for
+    ///
+    /// # Returns
+    ///
+    /// A formatted string containing the most relevant document chunks, or an
+    /// empty string if the knowledge base is empty or no relevant documents exist.
+    ///
+    /// The format is:
+    /// ```text
+    /// 
+    /// Relevant context from your knowledge base:
+    ///
+    /// [1] <first most relevant chunk>
+    /// [2] <second most relevant chunk>
+    /// ...
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if embedding generation fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = Config::load_default()?;
+    /// # let client = Client::new("http://localhost:11434");
+    /// let rag = Manager::new(&config, client);
+    ///
+    /// // After indexing some documents...
+    /// let context = rag.retrieve_context("How does Rust handle memory?").await?;
+    ///
+    /// // Use context in LLM prompt
+    /// let prompt = format!("Question: How does Rust handle memory?\n{}", context);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn retrieve_context(&self, query: &str) -> Result<String> {
         if self.store.count() == 0 {
             return Ok(String::new());
@@ -116,12 +324,53 @@ impl Manager {
         Ok(context)
     }
     
-    /// Returns the total number of documents in the knowledge base.
+    /// Returns the total number of documents (chunks) in the knowledge base.
+    ///
+    /// Each indexed file is split into multiple chunks, so the count represents
+    /// the number of chunks, not the number of original files.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = Config::load_default()?;
+    /// # let client = Client::new("http://localhost:11434");
+    /// let rag = Manager::new(&config, client);
+    ///
+    /// println!("Knowledge base has {} chunks", rag.count());
+    ///
+    /// rag.add_knowledge("Some text", "source").await?;
+    /// assert_eq!(rag.count(), 1);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn count(&self) -> usize {
         self.store.count()
     }
     
-    /// Clears all documents from the knowledge base.
+    /// Removes all documents from the knowledge base.
+    ///
+    /// After calling this method, the knowledge base will be empty and
+    /// [`count`](Self::count) will return 0.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let config = Config::load_default()?;
+    /// # let client = Client::new("http://localhost:11434");
+    /// let rag = Manager::new(&config, client);
+    ///
+    /// rag.add_knowledge("Some text", "source").await?;
+    /// assert!(rag.count() > 0);
+    ///
+    /// rag.clear();
+    /// assert_eq!(rag.count(), 0);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn clear(&self) {
         self.store.clear();
     }
