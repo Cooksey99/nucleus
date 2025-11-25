@@ -221,19 +221,17 @@ impl InputHandler {
         Ok(())
     }
 
-    /// Updates the shell prompt to reflect the current mode.
+    /// Displays a mode indicator directly to the writer (stdout).
     /// 
-    /// Saves original PS1 on first run, then prepends mode indicator.
-    /// Also clears the screen for a clean visual transition.
+    /// Displays a mode indicator directly to the writer (stdout).
+    /// 
+    /// Does not modify shell state (PS1).
     pub fn show_mode_indicator(&self, writer: &mut dyn Write) -> Result<()> {
-        let mode_theme = self.state.mode.theme(&self.theme);
+        let colored_prompt = self.colored_prompt();
         
-        writer.write_all(b"[ -z \"$OLD_PS1\" ] && export OLD_PS1=\"$PS1\"\n")?;
-        
-        let prompt_command = mode_theme.zsh_prompt_command();
-        writer.write_all(prompt_command.as_bytes())?;
-        writer.write_all(b"\n")?;
-        writer.write_all(b"clear\n")?;
+        writer.write_all(b"\r\n")?;
+        writer.write_all(colored_prompt.as_bytes())?;
+        writer.write_all(b"\r\n")?;
         writer.flush()?;
         Ok(())
     }

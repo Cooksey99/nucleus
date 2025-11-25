@@ -25,7 +25,7 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
     let mut stdin_buf = vec![0u8; 8192];
     let mut pty_buf = vec![0u8; 262144];
 
-    input_handler.show_mode_indicator(&mut writer)?;
+    input_handler.show_mode_indicator(output_handler.get_writer())?;
 
     // Event loop to handle user inputs
     loop {
@@ -38,7 +38,7 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
                     match action {
                         InputAction::ToggleMode => {
                             input_handler.state_mut().toggle_mode();
-                            input_handler.show_mode_indicator(&mut writer)?;
+                            input_handler.show_mode_indicator(output_handler.get_writer())?;
                         }
                         InputAction::CharacterInput(ch) => {
                             input_handler.handle_character(
