@@ -116,7 +116,7 @@ pub struct Message {
 }
 
 impl Message {
-    /// Creates a system message.
+    /// Creates a system message/prompt.
     ///
     /// System messages set the behavior and context for the AI assistant.
     pub fn system(content: impl Into<String>) -> Self {
