@@ -132,16 +132,24 @@ impl Client {
 pub struct Message {
     pub role: String,
     pub content: String,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<String>>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 impl Message {
-    /// Creates a system message/prompt.
+    /// Creates a system message.
     ///
     /// System messages set the behavior and context for the AI assistant.
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             role: "system".to_string(),
             content: content.into(),
+            images: None,
+            tool_calls: None,
         }
     }
     
@@ -152,6 +160,8 @@ impl Message {
         Self {
             role: "user".to_string(),
             content: content.into(),
+            images: None,
+            tool_calls: None,
         }
     }
 }
@@ -169,6 +179,10 @@ pub struct ChatRequest {
     
     #[serde(default = "default_stream")]
     pub stream: bool,
+    
+    /// Tools available for the model to call
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<Tool>>,
 }
 
 fn default_stream() -> bool {
@@ -188,6 +202,7 @@ impl ChatRequest {
             messages,
             options: None,
             stream: true,
+            tools: None,
         }
     }
     
@@ -238,6 +253,35 @@ pub struct EmbedResponse {
     
     #[serde(default)]
     pub embeddings: Vec<Vec<f32>>,
+}
+
+/// Tool specification for Ollama native tool calling.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tool {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: ToolFunction,
+}
+
+/// Function definition within a tool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolFunction {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
+
+/// Tool call requested by the LLM.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub function: ToolCallFunction,
+}
+
+/// Function call details.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallFunction {
+    pub name: String,
+    pub arguments: serde_json::Value,
 }
 
 #[cfg(test)]

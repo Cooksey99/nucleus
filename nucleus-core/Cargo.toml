@@ -12,3 +12,5 @@ tokio.workspace = true
 tokio-util.workspace = true
 reqwest.workspace = true
 futures.workspace = true
+anyhow.workspace = true
+nucleus-plugin = { path = "../nucleus-plugin" }

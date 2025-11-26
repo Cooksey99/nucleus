@@ -98,8 +98,10 @@ impl RequestHandler {
         if let Some(history) = request.history {
             for msg in history {
                 messages.push(ollama::Message {
-                    role: msg.role,
-                    content: msg.content,
+                    role: "user".to_string(),
+                    content: msg.content.clone(),
+                    images: None,
+                    tool_calls: None,
                 });
             }
         }

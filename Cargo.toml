@@ -32,3 +32,4 @@ nucleus-core = { path = "nucleus-core", version = "0.1.0" }
 nucleus-plugin = { path = "nucleus-plugin", version = "0.1.0" }
 nucleus-std = { path = "nucleus-std", version = "0.1.0" }
 nucleus-dev = { path = "nucleus-dev", version = "0.1.0" }
+

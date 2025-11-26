@@ -14,3 +14,8 @@ default = ["std"]
 std = ["nucleus-std"]
 dev = ["nucleus-dev"]
 full = ["std", "dev"]
+
+[dev-dependencies]
+tokio.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
