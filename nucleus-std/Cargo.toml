@@ -1,0 +1,12 @@
+[package]
+name = "nucleus-std"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+nucleus-plugin.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+async-trait = "0.1"
+walkdir = "2.0"

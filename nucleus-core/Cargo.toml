@@ -1,0 +1,16 @@
+[package]
+name = "nucleus-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+reqwest.workspace = true
+futures.workspace = true
+anyhow.workspace = true
+nucleus-plugin = { path = "../nucleus-plugin" }

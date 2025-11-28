@@ -1,98 +1,98 @@
-# LLM Workspace
+# Nucleus
 
-> **Work in Progress** - This project is in early development
+A privacy-first, modular AI engine for building customizable developer tooling. Nucleus provides the infrastructure to integrate local or self-hosted LLMs with tool-based capabilities, enabling AI assistants that can interact with files, execute commands, and understand codebases - all without sending data to external services.
 
-A privacy-first AI terminal assistant that runs entirely on local or self-hosted LLMs. Built as a PTY wrapper, it brings intelligent assistance directly into your terminal workflow without sending your data to external services.
+## What It Does
 
-![Demo](demo.gif)
+Nucleus is a **library**, not an application. It provides the building blocks for creating AI-powered developer tools:
 
-## Current Features (Partially Working)
+- **Tool-Augmented LLM**: Execute real actions (read files, search code, run commands) instead of just text generation
+- **Plugin System**: Extensible tools with permission controls
+- **Local-First**: Works with local LLMs (Ollama, llama.cpp, etc.) - no data leaves your machine
+- **Modular Architecture**: Use only what you need
 
-- **Standalone AI Server** - Local LLM server powered by Ollama
-- **PTY Terminal Wrapper** - AI-enhanced terminal session
-- **Interactive AI Chat** - Ask questions and get help without leaving your terminal
-- **RAG (Retrieval Augmented Generation)** - Context-aware responses from your codebase
-- **Zero Data Leakage** - Complete privacy with local-only LLM execution
+## Example Usage
 
-## Planned Features
+Here's a minimal example that lets an AI read and analyze files:
 
-- **File Operations** - AI-assisted file editing and command execution
-- **Terminal Auto-Prediction** - Intelligent command suggestions as you type
-- **Personalized AI** - Learns your coding style and preferences
-- **Context-Aware Assistance** - Understands your project structure and history
-- **Optional Server Integration** - Self-hosted remote capabilities (local-first priority)
+```rust
+use nucleus_core::{ChatManager, Config};
+use nucleus_plugin::{PluginRegistry, Permission};
+use nucleus_std::ReadFilePlugin;
+use std::sync::Arc;
 
-
-## Build
-
-```bash
-make build
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = Config::load_or_default();
+    
+    // Register plugins the AI can use
+    let mut registry = PluginRegistry::new(Permission::READ_ONLY);
+    registry.register(Arc::new(ReadFilePlugin::new()));
+    
+    let manager = ChatManager::new(config, Arc::new(registry));
+    
+    // Ask the AI a question - it will use plugins to answer
+    let response = manager.query(
+        "What's on line 7 of Cargo.toml?"
+    ).await?;
+    
+    println!("AI: {}", response);
+    Ok(())
+}
 ```
 
-This builds:
-- `llm-server` - Go AI server (connects to Ollama)
-- `llm-workspace` - Rust PTY wrapper
+The AI will:
+1. Recognize it needs to read a file
+2. Use the `ReadFilePlugin` to get the content
+3. Analyze and respond with the answer
 
-## Run
-
-```bash
-./llm-workspace
-```
-
-Or:
+## Building
 
 ```bash
-make run
+cargo build --release
 ```
 
-The PTY will automatically start the AI server in the background.
-
-## AI Commands
-
-Once in the PTY, use these commands:
-
-- `/ai <question>` - Chat with AI
-- `/edit <request>` - Use AI with file editing capabilities
-- `/add <text>` - Add knowledge to vector database
-- `/index <path>` - Index a directory for RAG
-- `/stats` - Show knowledge base statistics
-
-## Standalone AI Server
-
-Run the AI server in interactive mode:
-
+Run examples:
 ```bash
-go run ai/server.go interactive
+cargo run --example read_file_line
+cargo run --example write_file
 ```
 
-## Install
+## Architecture
 
-Install to `/usr/local/bin`:
+Nucleus is structured as a workspace with clear separation:
 
-```bash
-make install
+- **nucleus-core**: LLM orchestration, chat management, configuration
+- **nucleus-plugin**: Plugin trait and registry system
+- **nucleus-std**: Standard plugins (file I/O, search, exec)
+- **nucleus-dev**: Developer-specific plugins (git, LSP integration)
+- **nucleus**: Convenience wrapper with feature flags
+
+## Dependencies
+
+```toml
+[dependencies]
+nucleus = "0.1"  # Includes core + std plugins by default
 ```
 
-Then run from anywhere:
-
-```bash
-llm-workspace
+For minimal setup:
+```toml
+nucleus = { version = "0.1", default-features = false }
+nucleus-core = "0.1"
 ```
 
-## Configuration
+## Privacy
 
-Edit `ai/config.yaml` to configure:
-- Model selection
-- RAG settings
-- File operation preferences
+All data stays on your machine:
+- Connects only to local/self-hosted LLM backends
+- No telemetry or analytics
+- All storage under user control
 
-## Development
+## What You Can Build
 
-```bash
-make dev    # Quick dev build
-make clean  # Clean all artifacts
-```
-
-## Logs
-
-Server logs: `/tmp/llm-workspace.log`
+Nucleus is infrastructure for building tools like:
+- AI-enhanced terminal wrappers
+- Code review assistants
+- Interactive documentation systems
+- Project-specific AI helpers
+- Development environment integrations

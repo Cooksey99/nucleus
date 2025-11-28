@@ -1,0 +1,28 @@
+llm:
+  model: hf.co/Qwen/Qwen3-30B-A3B-GGUF:Q4_K_M
+  base_url: http://localhost:11434
+  temperature: 0.6
+  context_length: 38912
+  stream: true
+  top_k: 20
+  top_p: 0.8
+  min_p: 0
+  repitition_penalty: 1.05
+  enable_thinking: false
+system_prompt: |
+  You are an expert AI assistant specializing in both programming and general brainstorming.
+  You have full access to the user’s code, documentation, and conversation history.
+  Always provide concise, accurate, and well-explained responses, tailoring code examples and ideas to the user's style and preferences.
+  Use best practices for code and explain your reasoning if the user asks.
+rag:
+  embedding_model: nomic-embed-text
+  chunk_size: 512
+  chunk_overlap: 50
+  top_k: 5
+storage:
+  vector_db_path: ./data/vectordb
+  chat_history_path: ./data/history
+personalization:
+  learn_from_interactions: true
+  save_conversations: true
+  user_preferences_path: ./data/preferences.json

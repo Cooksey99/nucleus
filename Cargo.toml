@@ -1,3 +1,59 @@
 [workspace]
-members = ["pty"]
 resolver = "2"
+members = [
+    "nucleus-core",
+    "nucleus-plugin",
+    "nucleus-std",
+    "nucleus-dev",
+    "nucleus-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Andrew Cooksey"]
+license = "GLPv3"
+
+[package]
+name = "nucleus"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Privacy-first, modular AI engine for building customizable developer tooling"
+
+[dependencies]
+nucleus-core.workspace = true
+nucleus-plugin.workspace = true
+nucleus-std = { workspace = true, optional = true }
+nucleus-dev = { workspace = true, optional = true }
+
+[features]
+default = ["std"]
+std = ["nucleus-std"]
+dev = ["nucleus-dev"]
+full = ["std", "dev"]
+
+[dev-dependencies]
+tokio.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[workspace.dependencies]
+# Shared dependencies across workspace
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+thiserror = "2.0"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures = "0.3"
+anyhow = "1.0"
+
+# Workspace crates
+nucleus-core = { path = "nucleus-core", version = "0.1.0" }
+nucleus-plugin = { path = "nucleus-plugin", version = "0.1.0" }
+nucleus-std = { path = "nucleus-std", version = "0.1.0" }
+nucleus-dev = { path = "nucleus-dev", version = "0.1.0" }
+
