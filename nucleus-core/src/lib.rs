@@ -13,6 +13,7 @@
 // Public modules
 pub mod chat;
 pub mod config;
+pub mod detection;
 pub mod rag;
 pub mod server;
 
@@ -22,4 +23,5 @@ mod ollama;
 // Public exports
 pub use chat::ChatManager;
 pub use config::{Config, IndexerConfig};
+pub use detection::{check_ollama_silent, detect_ollama, DetectionError, OllamaInfo};
 pub use server::Server;

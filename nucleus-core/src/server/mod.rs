@@ -13,7 +13,7 @@ mod types;
 #[allow(unused)]
 pub use types::{ChunkType, Message, Request, RequestType, StreamChunk};
 
-use crate::{config::Config, ollama};
+use crate::{config::Config, detection, ollama};
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::mpsc;
@@ -28,12 +28,17 @@ pub struct Server {
 
 impl Server {
     /// Creates a new server instance.
-    pub fn new(config: Config) -> Self {
+    /// 
+    /// This will check if Ollama is installed and running.
+    /// If not, helpful installation/startup instructions will be printed.
+    pub fn new(config: Config) -> Result<Self, detection::DetectionError> {
+        detection::detect_ollama()?;
+        
         let ollama_client = ollama::Client::new(&config.llm.base_url);
         let handler = Arc::new(handler::RequestHandler::new(config, ollama_client));
         let transport = transport::UnixSocketTransport::new(SOCKET_PATH);
         
-        Self { handler, transport }
+        Ok(Self { handler, transport })
     }
     
     /// Starts the server and listens for connections.
