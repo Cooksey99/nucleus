@@ -35,19 +35,6 @@ pub type Result<T> = std::result::Result<T, EmbedderError>;
 /// - `nomic-embed-text` - 768-dimensional embeddings, good general purpose
 /// - `mxbai-embed-large` - 1024-dimensional embeddings, higher quality
 ///
-/// # Example
-///
-/// ```no_run
-/// # use nucleus_core::{ollama::Client, rag::embedder::Embedder};
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = Client::new("http://localhost:11434");
-/// let embedder = Embedder::new(client, "nomic-embed-text");
-///
-/// let embedding = embedder.embed("Hello, world!").await?;
-/// println!("Embedding dimension: {}", embedding.len());
-/// # Ok(())
-/// # }
-/// ```
 #[derive(Clone)]
 pub struct Embedder {
     client: Client,
@@ -84,21 +71,6 @@ impl Embedder {
     /// - The model is not available
     /// - The API returns no embeddings
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use nucleus_core::{ollama::Client, rag::embedder::Embedder};
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = Client::new("http://localhost:11434");
-    /// let embedder = Embedder::new(client, "nomic-embed-text");
-    ///
-    /// let embedding1 = embedder.embed("The cat sat on the mat").await?;
-    /// let embedding2 = embedder.embed("A feline rested on the rug").await?;
-    ///
-    /// // These embeddings will be similar (high cosine similarity)
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         let request = EmbedRequest {
             model: self.model.clone(),

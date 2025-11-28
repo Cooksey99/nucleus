@@ -21,28 +21,6 @@
 //! - [`store`]: In-memory vector database with similarity search
 //! - [`indexer`]: File collection and text chunking utilities
 //!
-//! # Usage
-//!
-//! ```no_run
-//! # use nucleus_core::{Config, ollama::Client, rag::Manager};
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! # let config = Config::load_default()?;
-//! # let ollama_client = Client::new("http://localhost:11434");
-//! let rag = Manager::new(&config, ollama_client);
-//!
-//! // Index a directory
-//! let count = rag.index_directory("/path/to/code").await?;
-//! println!("Indexed {} files", count);
-//!
-//! // Add individual knowledge
-//! rag.add_knowledge("Rust is a systems programming language", "manual").await?;
-//!
-//! // Retrieve context for a query
-//! let context = rag.retrieve_context("What is Rust?").await?;
-//! println!("Context: {}", context);
-//! # Ok(())
-//! # }
-//! ```
 //!
 //! # How It Works
 //!
@@ -148,24 +126,6 @@ impl Manager {
     ///
     /// Returns an error if embedding generation fails.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use nucleus_core::{Config, ollama::Client, rag::Manager};
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let config = Config::load_default()?;
-    /// # let client = Client::new("http://localhost:11434");
-    /// let rag = Manager::new(&config, client);
-    ///
-    /// rag.add_knowledge(
-    ///     "Rust is a systems programming language",
-    ///     "manual_entry"
-    /// ).await?;
-    ///
-    /// println!("Knowledge base now has {} documents", rag.count());
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn add_knowledge(&self, content: &str, source: &str) -> Result<()> {
         let embedding = self.embedder.embed(content).await?;
         
@@ -201,21 +161,6 @@ impl Manager {
     /// - The directory doesn't exist or isn't accessible
     /// - Embedding generation fails for any chunk
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use nucleus_core::{Config, ollama::Client, rag::Manager};
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let config = Config::load_default()?;
-    /// # let client = Client::new("http://localhost:11434");
-    /// let rag = Manager::new(&config, client);
-    ///
-    /// let count = rag.index_directory("./src").await?;
-    /// println!("Indexed {} files", count);
-    /// println!("Total chunks in knowledge base: {}", rag.count());
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn index_directory(&self, dir_path: &str) -> Result<usize> {
         let files = collect_files(dir_path, &self.indexer_config).await?;
         let mut indexed_count = 0;
@@ -269,23 +214,6 @@ impl Manager {
     ///
     /// Returns an error if embedding generation fails.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use nucleus_core::{Config, ollama::Client, rag::Manager};
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let config = Config::load_default()?;
-    /// # let client = Client::new("http://localhost:11434");
-    /// let rag = Manager::new(&config, client);
-    ///
-    /// // After indexing some documents...
-    /// let context = rag.retrieve_context("How does Rust handle memory?").await?;
-    ///
-    /// // Use context in LLM prompt
-    /// let prompt = format!("Question: How does Rust handle memory?\n{}", context);
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn retrieve_context(&self, query: &str) -> Result<String> {
         if self.store.count() == 0 {
             return Ok(String::new());

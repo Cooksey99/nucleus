@@ -48,7 +48,7 @@ use std::sync::Arc;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// let config = Config::load_default()?;
-/// let registry = Arc::new(PluginRegistry::new(Default::default()));
+/// let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
 /// let manager = ChatManager::new(config, registry);
 ///
 /// let response = manager.query("What files are in the current directory?").await?;
@@ -141,7 +141,7 @@ impl ChatManager {
     /// # use std::sync::Arc;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_default()?;
-    /// # let registry = Arc::new(PluginRegistry::new(Default::default()));
+    /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
     /// # let manager = ChatManager::new(config, registry);
     /// let response = manager.query("Summarize the README file").await?;
     /// println!("Response: {}", response);

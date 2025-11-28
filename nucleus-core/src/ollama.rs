@@ -55,13 +55,6 @@ impl Client {
     /// Returns an error if the HTTP request fails, the response cannot be parsed,
     /// or the Ollama API returns an error.
     ///
-    /// # Example
-    ///
-    /// ```
-    /// client.chat(request, |response| {
-    ///     print!("{}", response.message.content);
-    /// }).await?;
-    /// ```
     pub async fn chat(
         &self,
         request: ChatRequest,

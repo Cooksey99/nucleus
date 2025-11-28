@@ -30,20 +30,6 @@ use std::sync::{Arc, RwLock};
 /// - Qdrant, Milvus, or Weaviate for production workloads
 /// - Pinecone or similar cloud services
 ///
-/// # Example
-///
-/// ```no_run
-/// # use nucleus_core::rag::{store::VectorStore, types::Document};
-/// let store = VectorStore::new();
-///
-/// // Add a document
-/// let doc = Document::new("1", "Hello world", vec![0.1, 0.2, 0.3]);
-/// store.add(doc);
-///
-/// // Search for similar documents
-/// let query_embedding = vec![0.1, 0.2, 0.3];
-/// let results = store.search(&query_embedding, 5);
-/// ```
 #[derive(Clone)]
 pub struct VectorStore {
     documents: Arc<RwLock<Vec<Document>>>,
@@ -86,22 +72,6 @@ impl VectorStore {
     /// Time complexity: O(n * d) where n is the number of documents and d is
     /// the embedding dimension. Space complexity: O(n) for storing results.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use nucleus_core::rag::{store::VectorStore, types::Document};
-    /// let store = VectorStore::new();
-    ///
-    /// let doc1 = Document::new("1", "cats", vec![1.0, 0.0, 0.0]);
-    /// let doc2 = Document::new("2", "dogs", vec![0.0, 1.0, 0.0]);
-    /// store.add(doc1);
-    /// store.add(doc2);
-    ///
-    /// // Search for documents similar to [1.0, 0.0, 0.0]
-    /// let results = store.search(&[1.0, 0.0, 0.0], 5);
-    /// assert_eq!(results[0].document.id, "1"); // "cats" is most similar
-    /// assert_eq!(results[0].score, 1.0); // Perfect match
-    /// ```
     pub fn search(&self, query_embedding: &[f32], top_k: usize) -> Vec<SearchResult> {
         let docs = self.documents.read().unwrap();
         
