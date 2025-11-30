@@ -9,6 +9,7 @@
 mod commands;
 mod files;
 mod search;
+mod web;
 
 pub use files::{ReadFilePlugin, WriteFilePlugin};
 pub use search::SearchPlugin;
