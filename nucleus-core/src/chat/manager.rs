@@ -180,7 +180,6 @@ impl ChatManager {
             let mut accumulated_content = String::new();
             let mut current_response: Option<ollama::ChatResponse> = None;
             let mut tool_calls: Option<Vec<ollama::ToolCall>> = None;
-
             self.ollama
                 .chat(request, |response| {
                     accumulated_content.push_str(&response.message.content);

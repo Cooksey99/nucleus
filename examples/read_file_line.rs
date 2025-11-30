@@ -25,11 +25,17 @@ async fn main() -> anyhow::Result<()> {
 
     let manager = ChatManager::new(config, registry);
 
-    println!("Question: What's on line 7 of Cargo.toml?\n");
+    println!("Question: What's on line 7 of config.yaml?\n");
     
-    let response = manager.query("What's on line 7 of Cargo.toml?").await?;
+    let response = manager.query("What's on line 7 of config.yaml?").await?;
     
     println!("AI Response:\n{}", response);
     
     Ok(())
+
+
+    let mut registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
+    registry.register(Arc::new(ReadFilePlugin::new()));
+
+    let manager = ChatManager::new(config, registry);
 }

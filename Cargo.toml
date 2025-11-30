@@ -38,6 +38,7 @@ full = ["std", "dev"]
 tokio.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+async-trait.workspace = true
 
 [workspace.dependencies]
 # Shared dependencies across workspace
@@ -50,6 +51,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures = "0.3"
 anyhow = "1.0"
+async-trait = "0.1"
 
 # Workspace crates
 nucleus-core = { path = "nucleus-core", version = "0.1.0" }
