@@ -45,6 +45,22 @@ impl Server {
         Ok(Self { handler, transport })
     }
     
+    /// Creates a new server and loads previously indexed documents.
+    ///
+    /// This is the recommended way to create a server as it restores
+    /// any documents that were previously indexed.
+    pub async fn new_with_persistence(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
+        let server = Self::new(config)?;
+        
+        // Load previously indexed documents
+        let count = server.handler.load_rag().await?;
+        if count > 0 {
+            println!("Loaded {} documents from persistent storage", count);
+        }
+        
+        Ok(server)
+    }
+    
     /// Starts the server and listens for connections.
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         let listener = self.transport.bind().await?;

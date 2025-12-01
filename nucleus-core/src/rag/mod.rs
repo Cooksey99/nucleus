@@ -40,8 +40,10 @@
 
 mod embedder;
 mod indexer;
+mod persistence;
 mod store;
 mod types;
+pub mod utils;
 
 #[allow(unused)]
 pub use types::{Document, SearchResult};
@@ -60,6 +62,9 @@ pub enum RagError {
     
     #[error("Indexer error: {0}")]
     Indexer(#[from] indexer::IndexerError),
+    
+    #[error("Persistence error: {0}")]
+    Persistence(#[from] persistence::PersistenceError),
     
     #[error("Failed to retrieve context: {0}")]
     Retrieval(String),
@@ -97,6 +102,8 @@ pub struct Manager {
 
 impl Manager {
     /// Creates a new RAG manager with the given configuration.
+    ///
+    /// This creates an in-memory vector store that does not persist data.
     pub fn new(config: &Config, ollama_client: Client) -> Self {
         let embedder = Embedder::new(ollama_client, &config.rag.embedding_model);
         let store = VectorStore::new();
@@ -109,6 +116,65 @@ impl Manager {
             top_k: config.rag.top_k,
             indexer_config: config.rag.indexer.clone(),
         }
+    }
+    
+    /// Creates a new RAG manager with persistent storage.
+    ///
+    /// The vector database will be saved to the directory specified in the config.
+    /// You should call [`load`](Self::load) after creation to restore previously
+    /// indexed documents.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{Config, rag::Manager, ollama::Client};
+    /// # async fn example() {
+    /// let config = Config::default();
+    /// let client = Client::new(&config.llm.base_url);
+    /// let manager = Manager::with_persistence(&config, client);
+    /// 
+    /// // Load previously indexed documents
+    /// manager.load().await.unwrap();
+    /// # }
+    /// ```
+    pub fn with_persistence(config: &Config, ollama_client: Client) -> Self {
+        let embedder = Embedder::new(ollama_client, &config.rag.embedding_model);
+        let store = VectorStore::with_persistence(&config.storage.vector_db_path);
+        
+        Self {
+            embedder,
+            store,
+            chunk_size: config.rag.chunk_size,
+            chunk_overlap: config.rag.chunk_overlap,
+            top_k: config.rag.top_k,
+            indexer_config: config.rag.indexer.clone(),
+        }
+    }
+    
+    /// Loads previously indexed documents from disk.
+    ///
+    /// Only works if the manager was created with [`with_persistence`](Self::with_persistence).
+    ///
+    /// # Returns
+    ///
+    /// The number of documents loaded.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if loading fails.
+    pub async fn load(&self) -> Result<usize> {
+        Ok(self.store.load().await?)
+    }
+    
+    /// Saves indexed documents to disk.
+    ///
+    /// Only works if the manager was created with [`with_persistence`](Self::with_persistence).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if saving fails.
+    pub async fn save(&self) -> Result<()> {
+        Ok(self.store.save().await?)
     }
     
     /// Adds a single piece of text to the knowledge base.
@@ -183,7 +249,96 @@ impl Manager {
             println!("✓ Indexed: {}", file.path.display());
         }
         
+        // Auto-save if persistence is enabled
+        self.store.save().await?;
+        
         Ok(indexed_count)
+    }
+    
+    /// Indexes multiple directories in batch.
+    ///
+    /// This is a convenience method for indexing multiple directories at once.
+    /// Each directory is processed sequentially with the same indexing configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir_paths` - A slice of directory paths to index
+    ///
+    /// # Returns
+    ///
+    /// The total number of files successfully indexed across all directories.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any directory fails to index. Previously indexed
+    /// directories are retained in the knowledge base.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{Config, rag::Manager, ollama::Client};
+    /// # async fn example(manager: Manager) {
+    /// let dirs = vec!["./src", "./docs", "./examples"];
+    /// let count = manager.index_directories(&dirs).await.unwrap();
+    /// println!("Indexed {} files", count);
+    /// # }
+    /// ```
+    pub async fn index_directories(&self, dir_paths: &[&str]) -> Result<usize> {
+        let mut total_count = 0;
+        
+        for dir_path in dir_paths {
+            println!("\nIndexing directory: {}", dir_path);
+            let count = self.index_directory(dir_path).await?;
+            total_count += count;
+        }
+        
+        println!("\n✓ Total files indexed: {}", total_count);
+        Ok(total_count)
+    }
+    
+    /// Indexes a single file directly.
+    ///
+    /// This is useful for indexing individual files outside of directory traversal.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - Path to the file to index
+    ///
+    /// # Returns
+    ///
+    /// The number of chunks created from the file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The file cannot be read
+    /// - Embedding generation fails
+    ///
+    pub async fn index_file(&self, file_path: &str) -> Result<usize> {
+        use tokio::fs;
+        
+        let content = fs::read_to_string(file_path).await
+            .map_err(|e| RagError::Indexer(indexer::IndexerError::Io(e)))?;
+        
+        let chunks = chunk_text(&content, self.chunk_size, self.chunk_overlap);
+        let chunk_count = chunks.len();
+        
+        for (i, chunk) in chunks.into_iter().enumerate() {
+            let embedding = self.embedder.embed(&chunk).await?;
+            
+            let id = format!("{}_chunk_{}", file_path, i);
+            let document = Document::new(id, chunk, embedding)
+                .with_metadata("source", file_path)
+                .with_metadata("chunk", i.to_string());
+            
+            self.store.add(document);
+        }
+        
+        // Auto-save if persistence is enabled
+        self.store.save().await?;
+        
+        println!("✓ Indexed: {} ({} chunks)", file_path, chunk_count);
+        Ok(chunk_count)
     }
     
     /// Retrieves relevant context from the knowledge base for a query.

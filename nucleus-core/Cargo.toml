@@ -14,3 +14,6 @@ reqwest.workspace = true
 futures.workspace = true
 anyhow.workspace = true
 nucleus-plugin = { path = "../nucleus-plugin" }
+
+[dev-dependencies]
+tempfile = "3.13"

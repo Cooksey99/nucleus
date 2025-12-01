@@ -3,7 +3,9 @@
 //! This module provides a simple but effective vector database implementation
 //! using in-memory storage and cosine similarity for search.
 
+use super::persistence::{load_from_disk, save_to_disk, PersistenceError};
 use super::types::{Document, SearchResult};
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 /// An in-memory vector store for document embeddings.
@@ -33,13 +35,72 @@ use std::sync::{Arc, RwLock};
 #[derive(Clone)]
 pub struct VectorStore {
     documents: Arc<RwLock<Vec<Document>>>,
+    persistence_path: Option<PathBuf>,
 }
 
 impl VectorStore {
     pub fn new() -> Self {
         Self {
             documents: Arc::new(RwLock::new(Vec::new())),
+            persistence_path: None,
         }
+    }
+    
+    /// Creates a new vector store with persistent storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `storage_path` - Directory where the vector database will be stored.
+    ///   The file will be named "vector_store.json" within this directory.
+    ///
+    pub fn with_persistence(storage_path: impl Into<PathBuf>) -> Self {
+        let mut path = storage_path.into();
+        path.push("vector_store.json");
+        
+        Self {
+            documents: Arc::new(RwLock::new(Vec::new())),
+            persistence_path: Some(path),
+        }
+    }
+    
+    /// Loads documents from disk if persistence is enabled.
+    ///
+    /// This should be called after creating the store to restore previously
+    /// indexed documents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if loading fails. If no persistence path is set,
+    /// this is a no-op.
+    ///
+    pub async fn load(&self) -> Result<usize, PersistenceError> {
+        if let Some(path) = &self.persistence_path {
+            let docs = load_from_disk(path).await?;
+            let count = docs.len();
+            
+            let mut store = self.documents.write().unwrap();
+            *store = docs;
+            
+            Ok(count)
+        } else {
+            Ok(0)
+        }
+    }
+    
+    /// Saves documents to disk if persistence is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if saving fails. If no persistence path is set,
+    /// this is a no-op.
+    ///
+    pub async fn save(&self) -> Result<(), PersistenceError> {
+        if let Some(path) = &self.persistence_path {
+            // Clone documents to avoid holding the lock across await
+            let docs = self.documents.read().unwrap().clone();
+            save_to_disk(&docs, path).await?;
+        }
+        Ok(())
     }
     
     /// Adds a document to the store.

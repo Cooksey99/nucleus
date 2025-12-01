@@ -13,13 +13,19 @@ pub struct RequestHandler {
 
 impl RequestHandler {
     pub fn new(config: Config, ollama_client: ollama::Client) -> Self {
-        let rag_manager = rag::Manager::new(&config, ollama_client.clone());
+        // Use persistent storage for RAG
+        let rag_manager = rag::Manager::with_persistence(&config, ollama_client.clone());
         
         Self {
             config,
             ollama_client,
             rag_manager,
         }
+    }
+    
+    /// Loads previously indexed documents from persistent storage.
+    pub async fn load_rag(&self) -> Result<usize, rag::RagError> {
+        self.rag_manager.load().await
     }
     
     /// Routes request to appropriate handler based on type.

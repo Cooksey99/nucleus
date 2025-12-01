@@ -29,6 +29,7 @@
 
 use crate::config::Config;
 use crate::ollama::{self, Client, ChatRequest, Message, Tool, ToolFunction};
+use crate::rag;
 use nucleus_plugin::PluginRegistry;
 use anyhow::{Context, Result};
 use std::sync::Arc;
@@ -77,6 +78,8 @@ pub struct ChatManager {
     ollama: Client,
     /// Registry for available plugins/tools
     registry: Arc<PluginRegistry>,
+    /// RAG manager for knowledge base integration (with persistent storage)
+    rag_manager: rag::Manager,
 }
 
 impl ChatManager {
@@ -103,11 +106,81 @@ impl ChatManager {
     /// ```
     pub fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
         let ollama = Client::new(&config.llm.base_url);
+        let rag_manager = rag::Manager::with_persistence(&config, ollama.clone());
+        
         Self {
             config,
             ollama,
             registry,
+            rag_manager,
         }
+    }
+    
+    /// Loads previously indexed documents from persistent storage.
+    ///
+    /// Should be called after creating the ChatManager to restore the knowledge base.
+    ///
+    /// # Returns
+    ///
+    /// The number of documents loaded from disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if loading fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{ChatManager, Config};
+    /// # use nucleus_plugin::PluginRegistry;
+    /// # use std::sync::Arc;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let config = Config::load_or_default();
+    /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
+    /// let manager = ChatManager::new(config, registry);
+    /// let count = manager.load_knowledge_base().await?;
+    /// println!("Loaded {} documents", count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn load_knowledge_base(&self) -> Result<usize> {
+        self.rag_manager.load().await
+            .context("Failed to load knowledge base")
+    }
+    
+    /// Indexes a directory into the knowledge base.
+    ///
+    /// Recursively indexes all files in the directory according to the
+    /// indexer configuration (extensions, exclude patterns, etc.).
+    ///
+    /// # Arguments
+    ///
+    /// * `dir_path` - Path to the directory to index
+    ///
+    /// # Returns
+    ///
+    /// The number of files successfully indexed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if indexing fails.
+    pub async fn index_directory(&self, dir_path: &str) -> Result<usize> {
+        self.rag_manager.index_directory(dir_path).await
+            .context("Failed to index directory")
+    }
+    
+    /// Returns the number of documents in the knowledge base.
+    pub fn knowledge_base_count(&self) -> usize {
+        self.rag_manager.count()
+    }
+    
+    /// Saves the knowledge base to disk.
+    ///
+    /// Note: The knowledge base is automatically saved after indexing operations,
+    /// but this method can be called to save manually.
+    pub async fn save_knowledge_base(&self) -> Result<()> {
+        self.rag_manager.save().await
+            .context("Failed to save knowledge base")
     }
 
     /// Sends a query to the LLM and returns the final response.
@@ -162,7 +235,18 @@ impl ChatManager {
     ///
     /// The loop ensures the LLM can chain multiple tool calls if needed.
     pub async fn query(&self, user_message: &str) -> Result<String> {
-        let mut messages = vec![Message::user(user_message)];
+        // Retrieve relevant context from knowledge base
+        let context = self.rag_manager.retrieve_context(user_message).await
+            .context("Failed to retrieve knowledge base context")?;
+        
+        // Construct user message with context if available
+        let enhanced_message = if !context.is_empty() {
+            format!("{}{}", context, user_message)
+        } else {
+            user_message.to_string()
+        };
+        
+        let mut messages = vec![Message::user(&enhanced_message)];
 
         let tools = self.build_tools();
 
