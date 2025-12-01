@@ -29,7 +29,7 @@
 
 use crate::config::Config;
 use crate::ollama::{self, Client, ChatRequest, Message, Tool, ToolFunction};
-use crate::rag;
+use crate::rag::Rag;
 use nucleus_plugin::PluginRegistry;
 use anyhow::{Context, Result};
 use std::sync::Arc;
@@ -79,7 +79,7 @@ pub struct ChatManager {
     /// Registry for available plugins/tools
     registry: Arc<PluginRegistry>,
     /// RAG manager for knowledge base integration (with persistent storage)
-    rag_manager: rag::Manager,
+    rag_manager: Rag,
 }
 
 impl ChatManager {
@@ -106,7 +106,7 @@ impl ChatManager {
     /// ```
     pub fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
         let ollama = Client::new(&config.llm.base_url);
-        let rag_manager = rag::Manager::with_persistence(&config, ollama.clone());
+        let rag_manager = Rag::with_persistence(&config, ollama.clone());
         
         Self {
             config,

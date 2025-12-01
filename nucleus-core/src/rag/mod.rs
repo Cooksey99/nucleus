@@ -91,7 +91,7 @@ pub type Result<T> = std::result::Result<T, RagError>;
 /// - `rag.chunk_overlap`: Overlap between chunks in bytes
 /// - `rag.top_k`: Number of results to return from searches
 #[derive(Clone)]
-pub struct Manager {
+pub struct Rag {
     embedder: Embedder,
     store: VectorStore,
     chunk_size: usize,
@@ -100,7 +100,7 @@ pub struct Manager {
     indexer_config: IndexerConfig,
 }
 
-impl Manager {
+impl Rag {
     /// Creates a new RAG manager with the given configuration.
     ///
     /// This creates an in-memory vector store that does not persist data.
@@ -127,11 +127,11 @@ impl Manager {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::{Config, rag::Manager, ollama::Client};
+    /// # use nucleus_core::{Config, rag::Rag, ollama::Client};
     /// # async fn example() {
     /// let config = Config::default();
     /// let client = Client::new(&config.llm.base_url);
-    /// let manager = Manager::with_persistence(&config, client);
+    /// let manager = Rag::with_persistence(&config, client);
     /// 
     /// // Load previously indexed documents
     /// manager.load().await.unwrap();
@@ -276,8 +276,8 @@ impl Manager {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::{Config, rag::Manager, ollama::Client};
-    /// # async fn example(manager: Manager) {
+    /// # use nucleus_core::{Config, rag::Rag, ollama::Client};
+    /// # async fn example(manager: Rag) {
     /// let dirs = vec!["./src", "./docs", "./examples"];
     /// let count = manager.index_directories(&dirs).await.unwrap();
     /// println!("Indexed {} files", count);
@@ -409,14 +409,14 @@ impl Manager {
 mod tests {
     use crate::{ollama::Client, Config};
 
-    use super::Manager;
+    use super::*;
 
     #[tokio::test]
     async fn test_indexing() {
         let config = Config::load_or_default();
         let client = Client::new(&config.llm.base_url);
 
-        let manager = Manager::new(&config, client);
+        let manager = Rag::new(&config, client);
         let content_count = manager.count();
 
         manager.add_knowledge("My name is Andrew Cooksey", "personal_info").await.unwrap();

@@ -8,13 +8,13 @@ pub type ChunkSender = mpsc::UnboundedSender<StreamChunk>;
 pub struct RequestHandler {
     config: Config,
     ollama_client: ollama::Client,
-    rag_manager: rag::Manager,
+    rag_manager: rag::Rag,
 }
 
 impl RequestHandler {
     pub fn new(config: Config, ollama_client: ollama::Client) -> Self {
         // Use persistent storage for RAG
-        let rag_manager = rag::Manager::with_persistence(&config, ollama_client.clone());
+        let rag_manager = rag::Rag::with_persistence(&config, ollama_client.clone());
         
         Self {
             config,
