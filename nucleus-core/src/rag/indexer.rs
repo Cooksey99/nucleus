@@ -77,7 +77,7 @@ pub struct IndexedFile {
 /// - **Exclude patterns**: Directories or files matching patterns in `config.exclude_patterns`
 ///   are skipped (e.g., "node_modules", ".git").
 ///
-/// This function is internal to the RAG system. Use [`Manager::index_directory`](crate::rag::Manager::index_directory)
+/// This function is internal to the RAG system. Use [`Rag::index_directory`](crate::rag::Rag::index_directory)
 /// for public-facing directory indexing.
 pub(crate) async fn collect_files(dir_path: impl AsRef<Path>, config: &IndexerConfig) -> Result<Vec<IndexedFile>> {
     let mut files = Vec::new();

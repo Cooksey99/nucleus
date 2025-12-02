@@ -143,10 +143,10 @@ impl Default for StorageConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            model: "llama3.2:latest".to_string(),
+            model: "qwen3:0.6b".to_string(),
             base_url: "http://localhost:11434".to_string(),
-            temperature: 0.7,
-            context_length: 8192,
+            temperature: 0.6,
+            context_length: 32768,
         }
     }
 }

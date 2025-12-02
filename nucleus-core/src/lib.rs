@@ -18,11 +18,13 @@ pub mod patterns;
 pub mod rag;
 pub mod server;
 
-// Private module (implementation detail)
-mod ollama;
+// Public modules (for advanced use)
+pub mod ollama;
 
 // Public exports
 pub use chat::ChatManager;
 pub use config::{Config, IndexerConfig};
 pub use detection::{check_ollama_silent, detect_ollama, DetectionError, OllamaInfo};
+pub use ollama::Client;
+pub use rag::Rag;
 pub use server::Server;

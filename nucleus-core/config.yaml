@@ -1,8 +1,8 @@
 llm:
-  model: "hf.co/Qwen/Qwen3-30B-A3B-GGUF:Q4_K_M"
+  model: "qwen3:0.6b"
   base_url: "http://localhost:11434"
   temperature: 0.6
-  context_length: 38912
+  context_length: 32768
   stream: true
   top_k: 20
   top_p: 0.8

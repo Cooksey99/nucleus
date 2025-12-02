@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A document stored in the vector database.
@@ -17,7 +18,7 @@ use std::collections::HashMap;
 ///     .with_metadata("source", "user_input")
 ///     .with_metadata("timestamp", "2024-01-01");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     pub id: String,
     pub content: String,
