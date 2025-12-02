@@ -15,6 +15,7 @@ pub mod chat;
 pub mod config;
 pub mod detection;
 pub mod patterns;
+pub mod provider;
 pub mod rag;
 pub mod server;
 
@@ -26,5 +27,6 @@ pub use chat::ChatManager;
 pub use config::{Config, IndexerConfig};
 pub use detection::{check_ollama_silent, detect_ollama, DetectionError, OllamaInfo};
 pub use ollama::Client;
+pub use provider::Provider;
 pub use rag::Rag;
 pub use server::Server;

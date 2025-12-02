@@ -14,6 +14,8 @@ reqwest.workspace = true
 futures.workspace = true
 anyhow.workspace = true
 nucleus-plugin = { path = "../nucleus-plugin" }
+mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git" }
+async-trait.workspace = true
 
 [dev-dependencies]
 tempfile = "3.13"

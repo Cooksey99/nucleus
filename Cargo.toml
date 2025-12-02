@@ -27,6 +27,7 @@ nucleus-core.workspace = true
 nucleus-plugin.workspace = true
 nucleus-std = { workspace = true, optional = true }
 nucleus-dev = { workspace = true, optional = true }
+async-trait.workspace = true
 
 [features]
 default = ["std"]
