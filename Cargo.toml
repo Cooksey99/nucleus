@@ -34,6 +34,9 @@ default = ["std"]
 std = ["nucleus-std"]
 dev = ["nucleus-dev"]
 full = ["std", "dev"]
+# GPU acceleration (pass-through to nucleus-core)
+metal = ["nucleus-core/metal"]
+cuda = ["nucleus-core/cuda"]
 
 [dev-dependencies]
 tokio.workspace = true

@@ -3,7 +3,6 @@ use std::fs;
 use std::path::Path;
 use thiserror::Error;
 
-
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Failed to read config file: {0}")]
@@ -147,8 +146,8 @@ impl Default for StorageConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            model: "MaziyarPanahi/Qwen3-0.6B-GGUF:Qwen3-0.6B.Q4_K_M.gguf".to_string(),  // Pre-quantized GGUF
-            base_url: "http://localhost:11434".to_string(),  // For Ollama provider (if used)
+            model: "MaziyarPanahi/Qwen3-0.6B-GGUF:Qwen3-0.6B.Q4_K_M.gguf".to_string(), // Pre-quantized GGUF
+            base_url: "http://localhost:11434".to_string(), // For Ollama provider (if used)
             temperature: 0.6,
             context_length: 32768,
         }

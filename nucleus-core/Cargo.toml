@@ -3,6 +3,13 @@ name = "nucleus-core"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+# GPU acceleration for Apple Silicon (requires Metal toolchain)
+metal = ["mistralrs/metal"]
+# GPU acceleration for NVIDIA (requires CUDA)
+cuda = ["mistralrs/cuda"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true

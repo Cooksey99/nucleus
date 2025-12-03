@@ -77,6 +77,10 @@ impl MistralRsProvider {
                 ));
             }
             
+            // Note: PagedAttention is intentionally omitted here.
+            // .with_paged_attn() can cause indefinite hangs on macOS with Metal/GPU
+            // due to initialization issues in mistral.rs (as of Dec 2024).
+            // The library will automatically disable it when needed anyway.
             GgufModelBuilder::new(parts[0], vec![parts[1]])
                 .with_logging()
                 .build()
