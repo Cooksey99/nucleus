@@ -27,10 +27,10 @@ impl OllamaProvider {
 
 #[async_trait]
 impl Provider for OllamaProvider {
-    async fn chat(
-        &self,
+    async fn chat<'a>(
+        &'a self,
         request: ChatRequest,
-        mut callback: impl FnMut(ChatResponse) + Send,
+        mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()> {
         let url = format!("{}/api/chat", self.base_url);
         

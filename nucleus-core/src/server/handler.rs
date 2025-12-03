@@ -1,5 +1,6 @@
 use super::types::{Request, RequestType, StreamChunk};
-use crate::{config::Config, ollama, rag};
+use crate::{config::Config, provider::Provider, rag};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 pub type ChunkSender = mpsc::UnboundedSender<StreamChunk>;
@@ -7,18 +8,18 @@ pub type ChunkSender = mpsc::UnboundedSender<StreamChunk>;
 /// Handles different request types and sends responses via channel.
 pub struct RequestHandler {
     config: Config,
-    ollama_client: ollama::Client,
+    provider: Arc<dyn Provider>,
     rag_manager: rag::Rag,
 }
 
 impl RequestHandler {
-    pub fn new(config: Config, ollama_client: ollama::Client) -> Self {
+    pub fn new(config: Config, provider: Arc<dyn Provider>) -> Self {
         // Use persistent storage for RAG
-        let rag_manager = rag::Rag::with_persistence(&config, ollama_client.clone());
+        let rag_manager = rag::Rag::with_persistence(&config, provider.clone());
         
         Self {
             config,
-            ollama_client,
+            provider,
             rag_manager,
         }
     }
@@ -41,19 +42,21 @@ impl RequestHandler {
     }
     
     async fn handle_chat(&self, request: Request, sender: ChunkSender) {
+        use crate::provider::ChatRequest;
+        
         let messages = self.build_messages(request);
         
-        let chat_request = ollama::ChatRequest::new(&self.config.llm.model, messages)
+        let chat_request = ChatRequest::new(&self.config.llm.model, messages)
             .with_temperature(self.config.llm.temperature);
         
         let mut full_response = String::new();
         
-        let result = self.ollama_client.chat(chat_request, |response| {
+        let result = self.provider.chat(chat_request, Box::new(|response| {
             if !response.message.content.is_empty() {
                 full_response.push_str(&response.message.content);
                 let _ = sender.send(StreamChunk::chunk(&response.message.content));
             }
-        }).await;
+        })).await;
         
         match result {
             Ok(_) => {
@@ -98,12 +101,14 @@ impl RequestHandler {
         )));
     }
     
-    fn build_messages(&self, request: Request) -> Vec<ollama::Message> {
-        let mut messages = vec![ollama::Message::system(&self.config.system_prompt)];
+    fn build_messages(&self, request: Request) -> Vec<crate::provider::Message> {
+        use crate::provider::Message;
+        
+        let mut messages = vec![Message::system(&self.config.system_prompt)];
         
         if let Some(history) = request.history {
             for msg in history {
-                messages.push(ollama::Message {
+                messages.push(Message {
                     role: "user".to_string(),
                     content: msg.content.clone(),
                     images: None,
@@ -112,7 +117,7 @@ impl RequestHandler {
             }
         }
         
-        messages.push(ollama::Message::user(&request.content));
+        messages.push(Message::user(&request.content));
         messages
     }
 }

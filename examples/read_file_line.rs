@@ -32,10 +32,4 @@ async fn main() -> anyhow::Result<()> {
     println!("AI Response:\n{}", response);
     
     Ok(())
-
-
-    let mut registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
-    registry.register(Arc::new(ReadFilePlugin::new()));
-
-    let manager = ChatManager::new(config, registry);
 }

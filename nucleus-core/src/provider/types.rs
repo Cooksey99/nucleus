@@ -31,10 +31,10 @@ pub trait Provider: Send + Sync {
     /// Stream a chat completion.
     ///
     /// The callback is invoked for each chunk of the response.
-    async fn chat(
-        &self,
+    async fn chat<'a>(
+        &'a self,
         request: ChatRequest,
-        callback: impl FnMut(ChatResponse) + Send,
+        callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()>;
     
     /// Generate an embedding vector for the given text.

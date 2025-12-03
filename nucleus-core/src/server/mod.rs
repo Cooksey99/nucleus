@@ -13,7 +13,7 @@ mod types;
 #[allow(unused)]
 pub use types::{ChunkType, Message, Request, RequestType, StreamChunk};
 
-use crate::{config::Config, detection, ollama};
+use crate::{config::Config, detection, provider::{OllamaProvider, Provider}};
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::mpsc;
@@ -38,8 +38,8 @@ impl Server {
     pub fn new(config: Config) -> Result<Self, detection::DetectionError> {
         detection::detect_ollama()?;
         
-        let ollama_client = ollama::Client::new(&config.llm.base_url);
-        let handler = Arc::new(handler::RequestHandler::new(config, ollama_client));
+        let provider: Arc<dyn Provider> = Arc::new(OllamaProvider::new(&config.llm.base_url));
+        let handler = Arc::new(handler::RequestHandler::new(config, provider));
         let transport = transport::IpcTransport::new(SOCKET_PATH);
         
         Ok(Self { handler, transport })

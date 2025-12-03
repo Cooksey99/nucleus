@@ -28,7 +28,7 @@
 //! preserves tool calls from any chunk to ensure they're not lost.
 
 use crate::config::Config;
-use crate::ollama::{self, Client, ChatRequest, Message, Tool, ToolFunction};
+use crate::provider::{OllamaProvider, ChatRequest, ChatResponse, Message, Tool, ToolFunction, ToolCall, Provider};
 use crate::rag::Rag;
 use nucleus_plugin::PluginRegistry;
 use anyhow::{Context, Result};
@@ -74,8 +74,8 @@ use std::sync::Arc;
 pub struct ChatManager {
     /// Nucleus core configuration
     config: Config,
-    /// Ollama client for LLM communication
-    ollama: Client,
+    /// LLM provider for communication
+    provider: Arc<dyn Provider>,
     /// Registry for available plugins/tools
     registry: Arc<PluginRegistry>,
     /// RAG manager for knowledge base integration (with persistent storage)
@@ -108,12 +108,12 @@ impl ChatManager {
     /// # }
     /// ```
     pub fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
-        let ollama = Client::new(&config.llm.base_url);
-        let rag_manager = Rag::new(&config, ollama.clone());
+        let provider: Arc<dyn Provider> = Arc::new(OllamaProvider::new(&config.llm.base_url));
+        let rag_manager = Rag::new(&config, provider.clone());
         
         Self {
             config,
-            ollama,
+            provider,
             registry,
             rag_manager,
         }
@@ -151,11 +151,11 @@ impl ChatManager {
     /// # }
     /// ```
     pub fn with_rag(config: Config, registry: Arc<PluginRegistry>, rag_manager: Rag) -> Self {
-        let ollama = Client::new(&config.llm.base_url);
+        let provider: Arc<dyn Provider> = Arc::new(OllamaProvider::new(&config.llm.base_url));
         
         Self {
             config,
-            ollama,
+            provider,
             registry,
             rag_manager,
         }
@@ -307,10 +307,10 @@ impl ChatManager {
             // Important: Tool calls may arrive in early chunks while content streams,
             // so we must preserve them separately from the final chunk.
             let mut accumulated_content = String::new();
-            let mut current_response: Option<ollama::ChatResponse> = None;
-            let mut tool_calls: Option<Vec<ollama::ToolCall>> = None;
-            self.ollama
-                .chat(request, |response| {
+            let mut current_response: Option<ChatResponse> = None;
+            let mut tool_calls: Option<Vec<ToolCall>> = None;
+            self.provider
+                .chat(request, Box::new(|response| {
                     accumulated_content.push_str(&response.message.content);
                     
                     // Preserve tool calls from any chunk - they typically arrive early
@@ -320,7 +320,7 @@ impl ChatManager {
                     }
                     
                     current_response = Some(response);
-                })
+                }))
                 .await
                 .context("Failed to get LLM response")?;
 

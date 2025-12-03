@@ -18,10 +18,10 @@ impl MistralRsProvider {
 
 #[async_trait]
 impl Provider for MistralRsProvider {
-    async fn chat(
-        &self,
+    async fn chat<'a>(
+        &'a self,
         _request: ChatRequest,
-        _callback: impl FnMut(ChatResponse) + Send,
+        _callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()> {
         Err(ProviderError::Other("MistralRsProvider not yet implemented".to_string()))
     }

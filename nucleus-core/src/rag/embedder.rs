@@ -1,17 +1,18 @@
-//! Embedding generation using Ollama.
+//! Embedding generation using LLM providers.
 //!
 //! This module provides functionality to convert text into vector embeddings
-//! using Ollama's embedding models.
+//! using provider embedding models.
 
-use crate::ollama::{Client, EmbedRequest};
+use crate::provider::{Provider, ProviderError};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Errors that can occur during embedding generation.
 #[derive(Debug, Error)]
 pub enum EmbedderError {
-    /// The Ollama API returned an error.
-    #[error("Ollama error: {0}")]
-    Ollama(#[from] crate::ollama::OllamaError),
+    /// The provider API returned an error.
+    #[error("Provider error: {0}")]
+    Provider(#[from] ProviderError),
     
     /// The API response contained no embeddings.
     ///
@@ -23,7 +24,7 @@ pub enum EmbedderError {
 /// Result type for embedding operations.
 pub type Result<T> = std::result::Result<T, EmbedderError>;
 
-/// Generates vector embeddings for text using Ollama's embedding models.
+/// Generates vector embeddings for text using LLM provider embedding models.
 ///
 /// The embedder converts text into high-dimensional vectors that capture
 /// semantic meaning. These vectors can then be compared using cosine
@@ -31,20 +32,20 @@ pub type Result<T> = std::result::Result<T, EmbedderError>;
 ///
 /// # Supported Models
 ///
-/// Common embedding models available through Ollama:
+/// Common embedding models:
 /// - `nomic-embed-text` - 768-dimensional embeddings, good general purpose
 /// - `mxbai-embed-large` - 1024-dimensional embeddings, higher quality
 ///
 #[derive(Clone)]
 pub struct Embedder {
-    client: Client,
+    provider: Arc<dyn Provider>,
     model: String,
 }
 
 impl Embedder {
-    pub fn new(client: Client, model: impl Into<String>) -> Self {
+    pub fn new(provider: Arc<dyn Provider>, model: impl Into<String>) -> Self {
         Self {
-            client,
+            provider,
             model: model.into(),
         }
     }
@@ -72,16 +73,9 @@ impl Embedder {
     /// - The API returns no embeddings
     ///
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
-        let request = EmbedRequest {
-            model: self.model.clone(),
-            input: text.to_string(),
-        };
-        
-        let response = self.client.embed(request).await?;
-        
-        response.embeddings
-            .into_iter()
-            .next()
-            .ok_or(EmbedderError::NoEmbeddings)
+        self.provider
+            .embed(text, &self.model)
+            .await
+            .map_err(EmbedderError::Provider)
     }
 }

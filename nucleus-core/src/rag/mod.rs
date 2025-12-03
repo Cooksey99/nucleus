@@ -49,10 +49,11 @@ pub mod utils;
 pub use types::{Document, SearchResult};
 
 use crate::config::{Config, IndexerConfig};
-use crate::ollama::Client;
+use crate::provider::Provider;
 use embedder::Embedder;
 use indexer::{chunk_text, collect_files};
 use store::VectorStore;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -104,8 +105,8 @@ impl Rag {
     /// Creates a new RAG manager with the given configuration.
     ///
     /// This creates an in-memory vector store that does not persist data.
-    pub fn new(config: &Config, ollama_client: Client) -> Self {
-        let embedder = Embedder::new(ollama_client, &config.rag.embedding_model);
+    pub fn new(config: &Config, provider: Arc<dyn Provider>) -> Self {
+        let embedder = Embedder::new(provider, &config.rag.embedding_model);
         let store = VectorStore::new();
         
         Self {
@@ -127,18 +128,19 @@ impl Rag {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::{Config, rag::Rag, ollama::Client};
+    /// # use nucleus_core::{Config, rag::Rag, provider::OllamaProvider};
+    /// # use std::sync::Arc;
     /// # async fn example() {
     /// let config = Config::default();
-    /// let client = Client::new(&config.llm.base_url);
-    /// let manager = Rag::with_persistence(&config, client);
+    /// let provider = Arc::new(OllamaProvider::new(&config.llm.base_url));
+    /// let manager = Rag::with_persistence(&config, provider);
     /// 
     /// // Load previously indexed documents
     /// manager.load().await.unwrap();
     /// # }
     /// ```
-    pub fn with_persistence(config: &Config, ollama_client: Client) -> Self {
-        let embedder = Embedder::new(ollama_client, &config.rag.embedding_model);
+    pub fn with_persistence(config: &Config, provider: Arc<dyn Provider>) -> Self {
+        let embedder = Embedder::new(provider, &config.rag.embedding_model);
         let store = VectorStore::with_persistence(&config.storage.vector_db_path);
         
         Self {
