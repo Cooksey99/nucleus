@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let mut registry = PluginRegistry::new(Permission::READ_ONLY);
     registry.register(Arc::new(ReadFilePlugin::new()));
     
-    let manager = ChatManager::new(config, Arc::new(registry));
+    let manager = ChatManager::new(config, Arc::new(registry)).await;
     
     // Ask the AI a question - it will use plugins to answer
     let response = manager.query(
@@ -80,6 +80,22 @@ For minimal setup:
 nucleus = { version = "0.1", default-features = false }
 nucleus-core = "0.1"
 ```
+
+### Vector Database (for RAG)
+
+Nucleus uses [Qdrant](https://qdrant.tech/) for persistent vector storage in RAG (Retrieval Augmented Generation):
+
+```bash
+# Using Docker
+docker run -p 6334:6334 qdrant/qdrant
+
+# Or install locally: https://qdrant.tech/documentation/quick-start/
+```
+
+Qdrant provides:
+- **Automatic deduplication**: Re-indexing replaces old documents
+- **Persistent storage**: Data survives restarts
+- **Fast vector search**: HNSW indexing for millions of documents
 
 ## Privacy
 

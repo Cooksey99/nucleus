@@ -15,6 +15,7 @@ pub mod chat;
 pub mod config;
 pub mod detection;
 pub mod patterns;
+pub mod qdrant_helper;
 pub mod rag;
 pub mod server;
 

@@ -12,20 +12,15 @@ pub struct RequestHandler {
 }
 
 impl RequestHandler {
-    pub fn new(config: Config, ollama_client: ollama::Client) -> Self {
-        // Use persistent storage for RAG
-        let rag_manager = rag::Manager::with_persistence(&config, ollama_client.clone());
+    pub async fn new(config: Config, ollama_client: ollama::Client) -> Self {
+        // Use Qdrant for RAG
+        let rag_manager = rag::Manager::new(&config, ollama_client.clone()).await;
         
         Self {
             config,
             ollama_client,
             rag_manager,
         }
-    }
-    
-    /// Loads previously indexed documents from persistent storage.
-    pub async fn load_rag(&self) -> Result<usize, rag::RagError> {
-        self.rag_manager.load().await
     }
     
     /// Routes request to appropriate handler based on type.
@@ -91,7 +86,7 @@ impl RequestHandler {
     }
     
     async fn handle_stats(&self, sender: ChunkSender) {
-        let count = self.rag_manager.count();
+        let count = self.rag_manager.count().await;
         let _ = sender.send(StreamChunk::done(format!(
             "Knowledge base contains {} documents",
             count

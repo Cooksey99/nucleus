@@ -113,6 +113,19 @@ impl Default for RagConfig {
 pub struct StorageConfig {
     pub vector_db_path: String,
     pub chat_history_path: String,
+    
+    /// Qdrant vector database configuration
+    #[serde(default)]
+    pub qdrant: QdrantConfig,
+}
+
+/// Qdrant vector database configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QdrantConfig {
+    /// Qdrant server URL
+    pub url: String,
+    /// Collection name for storing vectors
+    pub collection_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,11 +144,21 @@ impl Default for PersonalizationConfig {
     }
 }
 
+impl Default for QdrantConfig {
+    fn default() -> Self {
+        Self {
+            url: "http://localhost:6334".to_string(),
+            collection_name: "nucleus_kb".to_string(),
+        }
+    }
+}
+
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
             vector_db_path: "./data/vectordb".to_string(),
             chat_history_path: "./data/history".to_string(),
+            qdrant: QdrantConfig::default(),
         }
     }
 }

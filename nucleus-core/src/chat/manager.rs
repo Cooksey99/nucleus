@@ -104,9 +104,9 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
+    pub async fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
         let ollama = Client::new(&config.llm.base_url);
-        let rag_manager = rag::Manager::with_persistence(&config, ollama.clone());
+        let rag_manager = rag::Manager::new(&config, ollama.clone()).await;
         
         Self {
             config,
@@ -116,37 +116,6 @@ impl ChatManager {
         }
     }
     
-    /// Loads previously indexed documents from persistent storage.
-    ///
-    /// Should be called after creating the ChatManager to restore the knowledge base.
-    ///
-    /// # Returns
-    ///
-    /// The number of documents loaded from disk.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if loading fails.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_plugin::PluginRegistry;
-    /// # use std::sync::Arc;
-    /// # async fn example() -> anyhow::Result<()> {
-    /// # let config = Config::load_or_default();
-    /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
-    /// let manager = ChatManager::new(config, registry);
-    /// let count = manager.load_knowledge_base().await?;
-    /// println!("Loaded {} documents", count);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn load_knowledge_base(&self) -> Result<usize> {
-        self.rag_manager.load().await
-            .context("Failed to load knowledge base")
-    }
     
     /// Indexes a directory into the knowledge base.
     ///
@@ -170,17 +139,42 @@ impl ChatManager {
     }
     
     /// Returns the number of documents in the knowledge base.
-    pub fn knowledge_base_count(&self) -> usize {
-        self.rag_manager.count()
+    pub async fn knowledge_base_count(&self) -> usize {
+        self.rag_manager.count().await
     }
     
-    /// Saves the knowledge base to disk.
+    
+    /// Clears all documents from the knowledge base.
     ///
-    /// Note: The knowledge base is automatically saved after indexing operations,
-    /// but this method can be called to save manually.
-    pub async fn save_knowledge_base(&self) -> Result<()> {
-        self.rag_manager.save().await
-            .context("Failed to save knowledge base")
+    /// Removes all indexed documents from Qdrant.
+    pub async fn clear_knowledge_base(&self) -> Result<()> {
+        self.rag_manager.clear().await
+            .context("Failed to clear knowledge base")
+    }
+    
+    /// Returns all unique file paths that have been indexed.
+    ///
+    /// Retrieves the list of all source file paths currently in the knowledge base.
+    pub async fn get_indexed_paths(&self) -> Result<Vec<String>> {
+        self.rag_manager.get_indexed_paths().await
+            .context("Failed to get indexed paths")
+    }
+
+    /// Removes documents from the knowledge base by source path.
+    ///
+    /// This removes all indexed documents that match the given path.
+    /// Works for both individual files and entire directories.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_path` - The file or directory path to remove
+    ///
+    /// # Returns
+    ///
+    /// The number of document chunks removed.
+    pub async fn remove_from_knowledge_base(&self, source_path: &str) -> Result<usize> {
+        self.rag_manager.remove_from_knowledge_base(source_path).await
+            .context("Failed to remove from knowledge base")
     }
 
     /// Sends a query to the LLM and returns the final response.

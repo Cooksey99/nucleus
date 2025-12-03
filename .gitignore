@@ -25,6 +25,12 @@ data/
 *.sqlite
 *.log
 
+# Qdrant storage
+storage/
+qdrant_storage/
+.qdrant/
+.qdrant-initialized
+
 # Config (sensitive)
 config/secrets.yaml
 config/local.yaml

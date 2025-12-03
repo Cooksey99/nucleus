@@ -114,6 +114,13 @@ impl Client {
         }
         
         let embed_response = response.json::<EmbedResponse>().await?;
+        
+        // Debug: log if embeddings are empty
+        if embed_response.embeddings.is_empty() {
+            eprintln!("WARNING: Ollama returned empty embeddings for model: {}", request.model);
+            eprintln!("         Input length: {}", request.input.len());
+        }
+        
         Ok(embed_response)
     }
 }

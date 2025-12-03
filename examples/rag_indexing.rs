@@ -17,30 +17,46 @@ async fn main() -> anyhow::Result<()> {
     // Load or create config
     let mut config = Config::load_or_default();
     
-    // Configure where to store the vector database
-    config.storage.vector_db_path = "./data/vectordb".to_string();
+    // Check if Qdrant is running, try to start it if not
+    match nucleus_core::qdrant_helper::ensure_qdrant_running(&config.storage.qdrant.url).await {
+        Ok(_) => println!("✓ Connected to Qdrant at {}\n", config.storage.qdrant.url),
+        Err(e) => {
+            eprintln!("{}", e);
+            
+            // Try to auto-start on Windows
+            #[cfg(target_os = "windows")]
+            {
+                let qdrant_path = "C:\\Users\\frigont\\Desktop\\qdrant.exe";
+                if let Ok(_) = nucleus_core::qdrant_helper::try_start_qdrant(qdrant_path) {
+                    // Wait a bit more for startup
+                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                    
+                    // Try connecting again
+                    nucleus_core::qdrant_helper::ensure_qdrant_running(&config.storage.qdrant.url).await?;
+                    println!("✓ Connected to Qdrant\n");
+                } else {
+                    return Err(e);
+                }
+            }
+            
+            #[cfg(not(target_os = "windows"))]
+            return Err(e);
+        }
+    }
     
     println!("Configuration:");
-    println!("  Vector DB Path: {}/vector_store.json", config.storage.vector_db_path);
+    println!("  Qdrant URL: {}", config.storage.qdrant.url);
+    println!("  Collection: {}", config.storage.qdrant.collection_name);
     println!("  Embedding Model: {}", config.rag.embedding_model);
     println!("  Chunk Size: {} bytes", config.rag.chunk_size);
     println!("  Chunk Overlap: {} bytes\n", config.rag.chunk_overlap);
     
     // Create chat manager with empty plugin registry
     let registry = Arc::new(PluginRegistry::new(Permission::READ_WRITE));
-    let manager = ChatManager::new(config.clone(), registry);
-    
-    // Load previously indexed documents
-    println!("Loading knowledge base...");
-    let loaded = manager.load_knowledge_base().await?;
-    if loaded > 0 {
-        println!("✓ Loaded {} documents from previous session\n", loaded);
-    } else {
-        println!("  No existing documents (first run)\n");
-    }
+    let manager = ChatManager::new(config.clone(), registry).await;
     
     // Check current count
-    let doc_count = manager.knowledge_base_count();
+    let doc_count = manager.knowledge_base_count().await;
     println!("Current knowledge base: {} documents\n", doc_count);
     
     // Example: Index the src directory
@@ -52,10 +68,11 @@ async fn main() -> anyhow::Result<()> {
         match manager.index_directory("./nucleus-core/src").await {
             Ok(count) => {
                 println!("✓ Indexed {} files!", count);
-                println!("  Total documents: {}\n", manager.knowledge_base_count());
+                println!("  Total documents: {}\n", manager.knowledge_base_count().await);
             }
             Err(e) => {
                 eprintln!("Warning: Could not index directory: {}", e);
+                eprintln!("Error chain: {:?}", e);
                 eprintln!("Make sure Ollama is running and the embedding model is installed.\n");
             }
         }
@@ -63,18 +80,18 @@ async fn main() -> anyhow::Result<()> {
     
     // Example: Query the knowledge base
     println!("=== Query Example ===");
-    println!("Asking: 'What is the RAG system?'\n");
+    println!("Asking: 'Where is the index_directory function implemented?'\n");
     
     let response = manager.query(
-        "Based on the codebase, what is the RAG system and how does it work?"
+        "In which file and module is the index_directory function implemented? What does it do?"
     ).await?;
     
     println!("AI Response:\n{}\n", response);
     
     println!("\n✓ Example complete!");
-    println!("\nVector database location: {}/vector_store.json", config.storage.vector_db_path);
-    println!("Knowledge base: {} documents", manager.knowledge_base_count());
-    println!("All indexed data persists across runs.");
+    println!("\nVector database: {} @ {}", config.storage.qdrant.collection_name, config.storage.qdrant.url);
+    println!("Knowledge base: {} documents", manager.knowledge_base_count().await);
+    println!("All indexed data persists in Qdrant.");
     
     Ok(())
 }

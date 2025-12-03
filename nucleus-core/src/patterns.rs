@@ -41,18 +41,34 @@ pub fn default_exclude_patterns() -> Vec<String> {
         "temp".to_string(),
         "cache".to_string(),
         ".cache".to_string(),
+        
+        // Database/Storage
+        "storage".to_string(),
+        "qdrant_storage".to_string(),
+        ".qdrant".to_string(),
+        "data".to_string(),
+        "db".to_string(),
+        ".db".to_string(),
     ]
 }
 
 /// Binary file extensions that should be skipped.
 pub fn binary_extensions() -> Vec<&'static str> {
     vec![
-        "png", "jpg", "jpeg", "gif", "bmp", "ico", "svg",
+        // Images
+        "png", "jpg", "jpeg", "gif", "bmp", "ico", "svg", "webp",
+        // Documents
         "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+        // Archives
         "zip", "tar", "gz", "bz2", "7z", "rar",
-        "exe", "dll", "so", "dylib", "a",
-        "mp3", "mp4", "avi", "mov", "mkv",
-        "wasm", "bin", "dat",
+        // Executables/Libraries
+        "exe", "dll", "so", "dylib", "a", "lib",
+        // Media
+        "mp3", "mp4", "avi", "mov", "mkv", "wav", "flac",
+        // Binary data
+        "wasm", "bin", "dat", "db", "sqlite", "sqlite3",
+        // Lock files (binary)
+        "lock",
     ]
 }
 
