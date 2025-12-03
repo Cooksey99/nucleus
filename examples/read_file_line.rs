@@ -13,6 +13,14 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize tracing subscriber
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("nucleus_core=debug".parse().unwrap())
+        )
+        .init();
+
     println!("Nucleus - AI + Plugin Example\n");
     
     println!("Current dir: {:?}\n", std::env::current_dir()?);

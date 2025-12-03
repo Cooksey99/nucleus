@@ -10,6 +10,13 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     println!("Nucleus - WriteFile Plugin Example\n");
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("nucleus_core=debug".parse().unwrap())
+        )
+        .init();
     
     let config = Config::load_or_default();
     

@@ -33,6 +33,7 @@ use crate::rag::Rag;
 use nucleus_plugin::PluginRegistry;
 use anyhow::{Context, Result};
 use std::sync::Arc;
+use tracing::{debug, info};
 
 /// Manages multi-turn conversations with tool-augmented LLM capabilities.
 ///
@@ -302,12 +303,14 @@ impl ChatManager {
         let tools = self.build_tools();
 
         loop {
+            debug!(message_count = messages.len(), tool_count = tools.len(), "Building chat request");
             let mut request = ChatRequest::new(&self.config.llm.model, messages.clone())
                 .with_temperature(self.config.llm.temperature);
 
             if !tools.is_empty() {
                 request.tools = Some(tools.clone());
             }
+            debug!("Sending request to provider");
 
             // Stream the LLM response, accumulating content and preserving tool calls.
             // Important: Tool calls may arrive in early chunks while content streams,
@@ -317,11 +320,13 @@ impl ChatManager {
             let mut tool_calls: Option<Vec<ToolCall>> = None;
             self.provider
                 .chat(request, Box::new(|response| {
+                    debug!(done = response.done, "Received response chunk from provider");
                     accumulated_content.push_str(&response.message.content);
                     
                     // Preserve tool calls from any chunk - they typically arrive early
                     // in the stream and may be absent from the final done=true chunk
-                    if response.message.tool_calls.is_some() {
+                    if let Some(ref tool_calls_ref) = response.message.tool_calls {
+                        debug!(tool_call_count = tool_calls_ref.len(), "Received tool calls in response");
                         tool_calls = response.message.tool_calls.clone();
                     }
                     
@@ -329,6 +334,7 @@ impl ChatManager {
                 }))
                 .await
                 .context("Failed to get LLM response")?;
+            debug!("Provider completed request");
 
             let mut response = current_response
                 .context("No response from LLM")?;
@@ -340,6 +346,7 @@ impl ChatManager {
 
             // Handle tool calls: execute each tool and add results to conversation
             if let Some(tool_calls) = &assistant_message.tool_calls {
+                info!(tool_call_count = tool_calls.len(), "Processing tool calls from LLM");
                 // Add the assistant's message with tool calls to conversation history
                 messages.push(Message {
                     role: "assistant".to_string(),
@@ -352,6 +359,7 @@ impl ChatManager {
                 for tool_call in tool_calls {
                     let tool_name = &tool_call.function.name;
                     let tool_args = &tool_call.function.arguments;
+                    info!(tool_name = %tool_name, "Executing tool");
 
                     let result = self
                         .registry

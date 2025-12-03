@@ -10,6 +10,7 @@ use mistralrs::{
     TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool,
     ToolChoice, ToolType,
 };
+use tracing::{debug, info, warn};
 
 use std::path::Path;
 use std::sync::Arc;
@@ -150,30 +151,68 @@ impl Provider for MistralRsProvider {
         // Convert to RequestBuilder
         let mut builder = RequestBuilder::from(messages);
 
-        // Add tools if provided
-        if let Some(tools) = &request.tools {
+        // TEMPORARY: Disable tools due to hang issue
+        // TODO: Fix tool calling - mistral.rs hangs with current implementation
+        #[allow(unreachable_code)]
+        if false {
+            if let Some(tools) = &request.tools {
+            info!(tool_count = tools.len(), "Converting tools for mistral.rs");
             let mistral_tools: Vec<MistralTool> = tools
                 .iter()
-                .map(|t| MistralTool {
-                    tp: ToolType::Function,
-                    function: Function {
-                        name: t.function.name.clone(),
-                        description: Some(t.function.description.clone()),
-                        parameters: Some(
-                            serde_json::from_value(t.function.parameters.clone())
-                                .unwrap_or_default()
-                        ),
-                    },
+                .map(|t| {
+                    debug!(tool_name = %t.function.name, description = %t.function.description, "Processing tool");
+                    debug!(parameters = ?t.function.parameters, "Tool parameters");
+                    
+                    // Extract properties from JSON Schema format
+                    // Input: {"type": "object", "properties": {"path": {...}}, "required": [...]}
+                    // Output: HashMap<String, Value> of just the properties
+                    let parameters = if let Some(props) = t.function.parameters.get("properties") {
+                        if let Some(obj) = props.as_object() {
+                            let extracted = obj.clone().into_iter().collect();
+                            debug!(properties = ?obj.keys().collect::<Vec<_>>(), "Extracted tool properties");
+                            Some(extracted)
+                        } else {
+                            warn!("Tool properties field is not an object");
+                            None
+                        }
+                    } else {
+                        debug!("No properties field found in tool schema, using as-is");
+                        // Fallback: try to use as-is if it's already a flat map
+                        serde_json::from_value(t.function.parameters.clone()).ok()
+                    };
+                    
+                    MistralTool {
+                        tp: ToolType::Function,
+                        function: Function {
+                            name: t.function.name.clone(),
+                            description: Some(t.function.description.clone()),
+                            parameters,
+                        },
+                    }
                 })
                 .collect();
+            info!(tool_count = mistral_tools.len(), "Setting tools with ToolChoice::Auto");
             builder = builder.set_tools(mistral_tools).set_tool_choice(ToolChoice::Auto);
+            }
         }
 
-        // Send request and get response
-        let response = self.model
-            .send_chat_request(builder)
-            .await
-            .map_err(|e| ProviderError::Other(format!("Chat request failed: {:?}", e)))?;
+        // Send request and get response with timeout to prevent hangs
+        debug!("Sending chat request to mistral.rs");
+        let timeout_duration = std::time::Duration::from_secs(60);
+        let response = tokio::time::timeout(
+            timeout_duration,
+            self.model.send_chat_request(builder)
+        )
+        .await
+        .map_err(|_| {
+            warn!(timeout_secs = timeout_duration.as_secs(), "Chat request timed out");
+            ProviderError::Other(
+                format!("Chat request timed out after {} seconds. This may indicate a hang in mistral.rs with tool calling.", 
+                    timeout_duration.as_secs())
+            )
+        })?
+        .map_err(|e| ProviderError::Other(format!("Chat request failed: {:?}", e)))?;
+        debug!("Received response from mistral.rs");
 
         let choice = response.choices.first()
             .ok_or_else(|| ProviderError::Other("No response choices".to_string()))?;

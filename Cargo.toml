@@ -43,6 +43,7 @@ tokio.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 [workspace.dependencies]
 # Shared dependencies across workspace
