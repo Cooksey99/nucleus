@@ -13,7 +13,6 @@ use mistralrs::{
 use nucleus_plugin::{Plugin, PluginRegistry};
 use tracing::{debug, info, warn};
 
-use std::fmt::format;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -27,6 +26,7 @@ use std::sync::Arc;
 pub struct MistralRsProvider {
     model: Arc<Model>,
     model_name: String,
+    registry: Arc<PluginRegistry>,
 }
 
 impl MistralRsProvider {
@@ -58,11 +58,12 @@ impl MistralRsProvider {
     /// ```
     pub async fn new(config: Config, registry: Arc<PluginRegistry>) -> Result<Self> {
         let model_name = config.llm.model.clone();
-        let model = Self::build_model(config, registry).await?;
+        let model = Self::build_model(config.clone(), Arc::clone(&registry)).await?;
 
         Ok(Self {
             model: Arc::new(model),
             model_name,
+            registry,
         })
     }
 
@@ -180,49 +181,55 @@ impl Provider for MistralRsProvider {
         // Convert to RequestBuilder
         let mut builder = RequestBuilder::from(messages);
 
-        // TEMPORARY: Disable tools due to hang issue
-        // TODO: Fix tool calling - mistral.rs hangs with current implementation
-        #[allow(unreachable_code)]
-        if false {
-            if let Some(tools) = &request.tools {
-            info!(tool_count = tools.len(), "Converting tools for mistral.rs");
-            let mistral_tools: Vec<MistralTool> = tools
+        // Convert plugins to mistral.rs tool definitions
+        if self.registry.get_count() > 0 {
+            let plugins = self.registry.all();
+            info!(plugin_count = plugins.len(), "Converting plugins to mistral.rs tools");
+            
+            let mistral_tools: Vec<MistralTool> = plugins
                 .iter()
-                .map(|t| {
-                    debug!(tool_name = %t.function.name, description = %t.function.description, "Processing tool");
-                    debug!(parameters = ?t.function.parameters, "Tool parameters");
+                .map(|plugin| {
+                    let schema = plugin.parameter_schema();
+                    debug!(
+                        tool_name = %plugin.name(),
+                        description = %plugin.description(),
+                        "Processing plugin"
+                    );
+                    debug!(parameters = ?schema, "Plugin parameter schema");
                     
                     // Extract properties from JSON Schema format
                     // Input: {"type": "object", "properties": {"path": {...}}, "required": [...]}
                     // Output: HashMap<String, Value> of just the properties
-                    let parameters = if let Some(props) = t.function.parameters.get("properties") {
+                    let parameters = if let Some(props) = schema.get("properties") {
                         if let Some(obj) = props.as_object() {
                             let extracted = obj.clone().into_iter().collect();
-                            debug!(properties = ?obj.keys().collect::<Vec<_>>(), "Extracted tool properties");
+                            debug!(
+                                properties = ?obj.keys().collect::<Vec<_>>(),
+                                "Extracted tool properties"
+                            );
                             Some(extracted)
                         } else {
-                            warn!("Tool properties field is not an object");
+                            warn!("Plugin properties field is not an object");
                             None
                         }
                     } else {
-                        debug!("No properties field found in tool schema, using as-is");
-                        // Fallback: try to use as-is if it's already a flat map
-                        serde_json::from_value(t.function.parameters.clone()).ok()
+                        debug!("No properties field in schema, using as-is");
+                        serde_json::from_value(schema).ok()
                     };
                     
                     MistralTool {
                         tp: ToolType::Function,
                         function: Function {
-                            name: t.function.name.clone(),
-                            description: Some(t.function.description.clone()),
+                            name: plugin.name().to_string(),
+                            description: Some(plugin.description().to_string()),
                             parameters,
                         },
                     }
                 })
                 .collect();
+            
             info!(tool_count = mistral_tools.len(), "Setting tools with ToolChoice::Auto");
             builder = builder.set_tools(mistral_tools).set_tool_choice(ToolChoice::Auto);
-            }
         }
 
         // Send request and get response with timeout to prevent hangs
