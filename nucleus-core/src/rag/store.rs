@@ -1,122 +1,25 @@
-//! In-memory vector storage and search.
+//! Vector store abstraction and factory.
 //!
-//! This module provides a simple but effective vector database implementation
-//! using in-memory storage and cosine similarity for search.
+//! This module provides a unified interface for different vector database implementations.
 
-use super::persistence::{load_from_disk, save_to_disk, PersistenceError};
 use super::types::{Document, SearchResult};
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use super::qdrant_store::QdrantStore;
+use super::lancedb_store::LanceDbStore;
+use crate::config::{RagConfig, StorageMode};
+use anyhow::Result;
+use async_trait::async_trait;
+use std::sync::Arc;
 
-/// An in-memory vector store for document embeddings.
+/// Unified interface for vector database operations.
 ///
-/// The vector store maintains a collection of documents with their embeddings
-/// and provides similarity-based search using cosine similarity. Documents are
-/// stored in memory and protected by a RwLock for thread-safe concurrent access.
-///
-/// # Characteristics
-///
-/// - **Simple**: No external dependencies or setup required
-/// - **Fast**: In-memory storage with O(n) search (linear scan)
-/// - **Thread-safe**: Uses `Arc<RwLock>` for safe concurrent access
-/// - **Ephemeral**: Data is lost when the process ends
-///
-/// # When to Use
-///
-/// This implementation is suitable for:
-/// - Small to medium datasets (< 10,000 documents)
-/// - Prototyping and development
-/// - Applications where persistence isn't required
-///
-/// For larger datasets or persistent storage, consider:
-/// - Qdrant, Milvus, or Weaviate for production workloads
-/// - Pinecone or similar cloud services
-///
-#[derive(Clone)]
-pub struct VectorStore {
-    documents: Arc<RwLock<Vec<Document>>>,
-    persistence_path: Option<PathBuf>,
-}
+/// Implementations handle document storage, similarity search, and metadata queries
+/// across different vector database backends (LanceDB for embedded, Qdrant for gRPC).
+#[async_trait]
+pub trait VectorStore: Send + Sync {
+    /// Adds or updates a document in the store.
+    async fn add(&self, document: Document) -> Result<()>;
 
-impl VectorStore {
-    pub fn new() -> Self {
-        Self {
-            documents: Arc::new(RwLock::new(Vec::new())),
-            persistence_path: None,
-        }
-    }
-    
-    /// Creates a new vector store with persistent storage.
-    ///
-    /// # Arguments
-    ///
-    /// * `storage_path` - Directory where the vector database will be stored.
-    ///   The file will be named "vector_store.json" within this directory.
-    ///
-    pub fn with_persistence(storage_path: impl Into<PathBuf>) -> Self {
-        let mut path = storage_path.into();
-        path.push("vector_store.json");
-        
-        Self {
-            documents: Arc::new(RwLock::new(Vec::new())),
-            persistence_path: Some(path),
-        }
-    }
-    
-    /// Loads documents from disk if persistence is enabled.
-    ///
-    /// This should be called after creating the store to restore previously
-    /// indexed documents.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if loading fails. If no persistence path is set,
-    /// this is a no-op.
-    ///
-    pub async fn load(&self) -> Result<usize, PersistenceError> {
-        if let Some(path) = &self.persistence_path {
-            let docs = load_from_disk(path).await?;
-            let count = docs.len();
-            
-            let mut store = self.documents.write().unwrap();
-            *store = docs;
-            
-            Ok(count)
-        } else {
-            Ok(0)
-        }
-    }
-    
-    /// Saves documents to disk if persistence is enabled.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if saving fails. If no persistence path is set,
-    /// this is a no-op.
-    ///
-    pub async fn save(&self) -> Result<(), PersistenceError> {
-        if let Some(path) = &self.persistence_path {
-            // Clone documents to avoid holding the lock across await
-            let docs = self.documents.read().unwrap().clone();
-            save_to_disk(&docs, path).await?;
-        }
-        Ok(())
-    }
-    
-    /// Adds a document to the store.
-    ///
-    /// Note: No deduplication is performed, so adding the same document multiple
-    /// times will create duplicates.
-    pub fn add(&self, document: Document) {
-        let mut docs = self.documents.write().unwrap();
-        docs.push(document);
-    }
-    
-    /// Searches for the most similar documents using cosine similarity.
-    ///
-    /// Performs a linear scan over all documents, computing cosine similarity
-    /// between the query embedding and each document's embedding. Results are
-    /// sorted by similarity score in descending order (best matches first).
+    /// Searches for the most similar documents using vector similarity.
     ///
     /// # Arguments
     ///
@@ -126,87 +29,56 @@ impl VectorStore {
     /// # Returns
     ///
     /// A vector of search results, sorted by descending similarity score.
-    /// May contain fewer than `top_k` results if the store has fewer documents.
+    async fn search(&self, query_embedding: &[f32]) -> Result<Vec<SearchResult>>;
+
+    /// Returns the total number of documents in the store.
+    async fn count(&self) -> Result<usize>;
+
+    /// Removes all documents from the store.
+    async fn clear(&self) -> Result<()>;
+
+    /// Returns all unique source file paths that have been indexed.
+    async fn get_indexed_paths(&self) -> Result<Vec<String>>;
+
+    /// Removes all documents with a matching source path.
     ///
-    /// # Performance
+    /// # Arguments
     ///
-    /// Time complexity: O(n * d) where n is the number of documents and d is
-    /// the embedding dimension. Space complexity: O(n) for storing results.
+    /// * `source_path` - The source path to remove (file or directory)
     ///
-    pub fn search(&self, query_embedding: &[f32], top_k: usize) -> Vec<SearchResult> {
-        let docs = self.documents.read().unwrap();
-        
-        let mut results: Vec<SearchResult> = docs
-            .iter()
-            .map(|doc| {
-                let score = cosine_similarity(query_embedding, &doc.embedding);
-                SearchResult {
-                    document: doc.clone(),
-                    score,
-                }
-            })
-            .collect();
-        
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-        
-        results.into_iter().take(top_k).collect()
-    }
-    
-    pub fn count(&self) -> usize {
-        self.documents.read().unwrap().len()
-    }
-    
-    pub fn clear(&self) {
-        self.documents.write().unwrap().clear();
-    }
+    /// # Returns
+    ///
+    /// The number of documents removed.
+    async fn remove_by_source(&self, source_path: &str) -> Result<usize>;
 }
 
-/// Computes cosine similarity between two vectors.
+/// Creates a vector store instance based on the storage mode.
 ///
-/// Returns values from -1.0 (opposite) to 1.0 (identical), with 0.0 indicating
-/// orthogonal vectors. Returns 0.0 for mismatched lengths or zero magnitude.
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() {
-        return 0.0;
-    }
-    
-    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let magnitude_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let magnitude_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    
-    if magnitude_a == 0.0 || magnitude_b == 0.0 {
-        return 0.0;
-    }
-    
-    dot_product / (magnitude_a * magnitude_b)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_cosine_similarity() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![1.0, 0.0, 0.0];
-        assert_eq!(cosine_similarity(&a, &b), 1.0);
-        
-        let a = vec![1.0, 0.0];
-        let b = vec![0.0, 1.0];
-        assert_eq!(cosine_similarity(&a, &b), 0.0);
-    }
-    
-    #[test]
-    fn test_vector_store() {
-        let store = VectorStore::new();
-        
-        let doc = Document::new("1", "test", vec![1.0, 0.0, 0.0]);
-        store.add(doc);
-        
-        assert_eq!(store.count(), 1);
-        
-        let results = store.search(&[1.0, 0.0, 0.0], 5);
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].score, 1.0);
+/// - `Embedded` mode uses LanceDB for zero-setup, in-process storage
+/// - `Grpc` mode uses Qdrant for remote server connectivity
+///
+/// # Arguments
+///
+/// * `config` - RAG configuration including storage mode and top_k
+/// * `collection_name` - Name of the collection/table to use
+/// * `vector_size` - Dimension of the embedding vectors
+///
+/// # Returns
+///
+/// A trait object that can be used for all vector store operations.
+pub async fn create_vector_store(
+    config: RagConfig,
+    collection_name: &str,
+    vector_size: u64,
+) -> Result<Arc<dyn VectorStore>> {
+    match config.storage_mode.clone() {
+        StorageMode::Embedded { path } => {
+            let store = LanceDbStore::new(config, &path, collection_name, vector_size.into()).await?;
+            Ok(Arc::new(store))
+        }
+        StorageMode::Grpc { .. } => {
+            let store = QdrantStore::new(config, collection_name, vector_size).await?;
+            Ok(Arc::new(store))
+        }
     }
 }

@@ -109,9 +109,9 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn new(config: Config, registry: Arc<PluginRegistry>) -> Result<Self> {
-        let provider: Arc<dyn Provider> = Arc::new(MistralRsProvider::new(config.clone(), Arc::clone(&registry)).await?);
-        let rag = Rag::new(&config, provider.clone());
-        
+        let provider: Arc<dyn Provider> = Arc::new(MistralRsProvider::new(&config, Arc::clone(&registry)).await?);
+        let rag = Rag::new(&config, provider.clone()).await?;
+
         Ok(Self {
             config,
             provider,
@@ -138,10 +138,10 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_provider(mut self, provider: Arc<dyn Provider>) -> Self {
-        self.rag = Rag::new(&self.config, provider.clone());
+    pub async fn with_provider(mut self, provider: Arc<dyn Provider>) -> Result<Self> {
+        self.rag = Rag::new(&self.config, provider.clone()).await?;
         self.provider = provider;
-        self
+        Ok(self)
     }
     
     /// Replace the RAG manager.
@@ -156,9 +156,10 @@ impl ChatManager {
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
     /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
+    /// let provider = Arc::new(/* create provider */);
     /// 
-    /// let custom_rag = Rag::with_persistence(&config, /* provider */);
-    /// let manager = ChatManager::new(config, registry)
+    /// let custom_rag = Rag::new(&config, provider).await?;
+    /// let manager = ChatManager::new(config, registry).await?
     ///     .with_rag(custom_rag);
     /// # Ok(())
     /// # }
@@ -195,15 +196,11 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn load_knowledge_base(&self) -> Result<usize> {
-        self.rag.load().await
-            .context("Failed to load knowledge base")
+    pub async fn knowledge_base_count(&self) -> usize {
+        self.rag.count().await
     }
     
     /// Indexes a directory into the knowledge base.
-    ///
-    /// Recursively indexes all files in the directory according to the
-    /// indexer configuration (extensions, exclude patterns, etc.).
     ///
     /// # Arguments
     ///
@@ -219,20 +216,6 @@ impl ChatManager {
     pub async fn index_directory(&self, dir_path: &str) -> Result<usize> {
         self.rag.index_directory(dir_path).await
             .context("Failed to index directory")
-    }
-    
-    /// Returns the number of documents in the knowledge base.
-    pub fn knowledge_base_count(&self) -> usize {
-        self.rag.count()
-    }
-    
-    /// Saves the knowledge base to disk.
-    ///
-    /// Note: The knowledge base is automatically saved after indexing operations,
-    /// but this method can be called to save manually.
-    pub async fn save_knowledge_base(&self) -> Result<()> {
-        self.rag.save().await
-            .context("Failed to save knowledge base")
     }
 
     /// Sends a query to the LLM and returns the final response.

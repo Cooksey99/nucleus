@@ -24,6 +24,9 @@ nucleus-plugin = { path = "../nucleus-plugin" }
 mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", default-features = false }
 async-trait.workspace = true
 tracing = "0.1.43"
+qdrant-client = { version = "1.11", default-features = false, features = ["serde"] }
+lancedb = "0.22"
+arrow-array = "56.2"
 
 [dev-dependencies]
 tempfile = "3.13"

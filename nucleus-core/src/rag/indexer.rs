@@ -30,12 +30,16 @@ pub type Result<T> = std::result::Result<T, IndexerError>;
 ///
 /// This function is internal to the RAG system.
 ///
-/// # Note on Byte vs Character Boundaries
+/// # UTF-8 Safety
 ///
-/// This function works with byte indices, not character boundaries. For UTF-8
-/// text with multi-byte characters, chunks may not align perfectly with
-/// character boundaries.
+/// This function respects UTF-8 character boundaries by finding the nearest
+/// valid boundary when chunk sizes would split multi-byte characters.
 pub(crate) fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
+    if text.is_empty() {
+        eprintln!("WARNING: chunk_text called with empty text");
+        return vec![];
+    }
+    
     if text.len() <= chunk_size {
         return vec![text.to_string()];
     }
@@ -44,14 +48,32 @@ pub(crate) fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<S
     let mut start = 0;
     
     while start < text.len() {
-        let end = (start + chunk_size).min(text.len());
-        chunks.push(text[start..end].to_string());
+        let mut end = (start + chunk_size).min(text.len());
+        
+        // Find the nearest character boundary at or before 'end'
+        while end > start && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        
+        let chunk = text[start..end].to_string();
+        if chunk.is_empty() {
+            eprintln!("WARNING: Empty chunk created at start={}, end={}", start, end);
+        } else {
+            chunks.push(chunk);
+        }
         
         if end == text.len() {
             break;
         }
         
-        start += chunk_size - overlap;
+        // Calculate next start position, ensuring it's on a char boundary
+        let step = chunk_size.saturating_sub(overlap);
+        start += step;
+        
+        // Adjust start to nearest char boundary
+        while start < text.len() && !text.is_char_boundary(start) {
+            start += 1;
+        }
     }
     
     chunks

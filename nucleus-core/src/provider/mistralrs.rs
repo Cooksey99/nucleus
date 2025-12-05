@@ -56,7 +56,7 @@ impl MistralRsProvider {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn new(config: Config, registry: Arc<PluginRegistry>) -> Result<Self> {
+    pub async fn new(config: &Config, registry: Arc<PluginRegistry>) -> Result<Self> {
         let model_name = config.llm.model.clone();
         
         // Log which backend we're using

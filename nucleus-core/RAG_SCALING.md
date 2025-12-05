@@ -451,7 +451,7 @@ RagConfig {
 RagConfig {
     chunk_size: 2048,  // Larger chunks
     chunk_overlap: 0,   // No overlap
-    index_type: IndexType::External(QdrantConfig {
+    index_type: IndexType::External(VectorDbConfig {
         url: "http://qdrant:6334",
         collection: "nucleus_rag",
     }),

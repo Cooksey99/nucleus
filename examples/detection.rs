@@ -9,7 +9,7 @@ use nucleus_core::{Config, Server};
 async fn main() {
     let config = Config::default();
     
-    match Server::new(config) {
+    match Server::new(config).await {
         Ok(server) => {
             println!("Server initialized successfully!");
             println!("Ollama is installed and running.");

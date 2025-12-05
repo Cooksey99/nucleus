@@ -62,6 +62,9 @@ pub struct LlmConfig {
     pub context_length: usize,
 }
 
+/// Configuration for RAG.
+///
+/// This includes the actual RAG settings, as well as the storage type (eg. Embedded, gRPC, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RagConfig {
     pub embedding_model: String,
@@ -70,6 +73,12 @@ pub struct RagConfig {
     pub top_k: usize,
     #[serde(default)]
     pub indexer: IndexerConfig,
+    /// Vector database storage mode
+    #[serde(default)]
+    pub storage_mode: StorageMode,
+    /// Vector database configuration (collection name, etc.)
+    #[serde(default)]
+    pub vector_db: VectorDbConfig,
 }
 
 /// Configuration for file indexing behavior.
@@ -99,6 +108,24 @@ impl Default for IndexerConfig {
     }
 }
 
+/// Vector database storage mode
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "lowercase")]
+pub enum StorageMode {
+    /// Embedded storage - runs in-process with zero setup (default)
+    Embedded { path: String },
+    /// gRPC storage - connect to external vector database server
+    Grpc { url: String },
+}
+
+impl Default for StorageMode {
+    fn default() -> Self {
+        Self::Embedded {
+            path: "./data/nucleus_vectordb".to_string(),
+        }
+    }
+}
+
 impl Default for RagConfig {
     fn default() -> Self {
         Self {
@@ -107,15 +134,30 @@ impl Default for RagConfig {
             chunk_overlap: 50,
             top_k: 5,
             indexer: IndexerConfig::default(),
+            storage_mode: StorageMode::default(),
+            vector_db: VectorDbConfig::default(),
         }
     }
 }
 
-/// Vector database for RAG system
+/// General storage configuration for non-RAG persistence.
+///
+/// This covers chat history, user preferences, tool state, etc.
+/// RAG vector database is configured separately in `RagConfig`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConfig {
-    pub vector_db_path: String,
     pub chat_history_path: String,
+    pub tool_state_path: String,
+}
+
+/// Vector database configuration (collection/index name, etc.).
+///
+/// Provider-agnostic configuration that works with any vector DB backend
+/// (Qdrant, LanceDB, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VectorDbConfig {
+    /// Collection/index name for storing vectors
+    pub collection_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,11 +176,19 @@ impl Default for PersonalizationConfig {
     }
 }
 
+impl Default for VectorDbConfig {
+    fn default() -> Self {
+        Self {
+            collection_name: "nucleus_kb".to_string(),
+        }
+    }
+}
+
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            vector_db_path: "./data/vectordb".to_string(),
             chat_history_path: "./data/history".to_string(),
+            tool_state_path: "./data/tool_state".to_string(),
         }
     }
 }
@@ -198,5 +248,25 @@ mod tests {
         assert!(perm.read);
         assert!(perm.write);
         assert!(perm.command);
+    }
+
+    #[test]
+    fn test_vector_db_config_default() {
+        let config = VectorDbConfig::default();
+        assert_eq!(config.collection_name, "nucleus_kb");
+    }
+
+    #[test]
+    fn test_storage_config_defaults() {
+        let config = StorageConfig::default();
+        assert_eq!(config.chat_history_path, "./data/history");
+        assert_eq!(config.tool_state_path, "./data/tool_state");
+    }
+
+    #[test]
+    fn test_rag_config_with_vector_db() {
+        let config = RagConfig::default();
+        assert_eq!(config.vector_db.collection_name, "nucleus_kb");
+        assert_eq!(config.embedding_model, "nomic-embed-text");
     }
 }

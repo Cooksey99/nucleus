@@ -40,7 +40,8 @@
 
 mod embedder;
 mod indexer;
-mod persistence;
+mod lancedb_store;
+mod qdrant_store;
 mod store;
 mod types;
 pub mod utils;
@@ -52,7 +53,7 @@ use crate::config::{Config, IndexerConfig};
 use crate::provider::Provider;
 use embedder::Embedder;
 use indexer::{chunk_text, collect_files};
-use store::VectorStore;
+use store::{create_vector_store, VectorStore};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -63,9 +64,6 @@ pub enum RagError {
     
     #[error("Indexer error: {0}")]
     Indexer(#[from] indexer::IndexerError),
-    
-    #[error("Persistence error: {0}")]
-    Persistence(#[from] persistence::PersistenceError),
     
     #[error("Failed to retrieve context: {0}")]
     Retrieval(String),
@@ -94,7 +92,7 @@ pub type Result<T> = std::result::Result<T, RagError>;
 #[derive(Clone)]
 pub struct Rag {
     embedder: Embedder,
-    store: VectorStore,
+    store: Arc<dyn VectorStore>,
     chunk_size: usize,
     chunk_overlap: usize,
     top_k: usize,
@@ -102,28 +100,7 @@ pub struct Rag {
 }
 
 impl Rag {
-    /// Creates a new RAG manager with the given configuration.
-    ///
-    /// This creates an in-memory vector store that does not persist data.
-    pub fn new(config: &Config, provider: Arc<dyn Provider>) -> Self {
-        let embedder = Embedder::new(provider, &config.rag.embedding_model);
-        let store = VectorStore::new();
-        
-        Self {
-            embedder,
-            store,
-            chunk_size: config.rag.chunk_size,
-            chunk_overlap: config.rag.chunk_overlap,
-            top_k: config.rag.top_k,
-            indexer_config: config.rag.indexer.clone(),
-        }
-    }
-    
-    /// Creates a new RAG manager with persistent storage.
-    ///
-    /// The vector database will be saved to the directory specified in the config.
-    /// You should call [`load`](Self::load) after creation to restore previously
-    /// indexed documents.
+    /// Creates a new RAG manager with vector database.
     ///
     /// # Example
     ///
@@ -133,52 +110,26 @@ impl Rag {
     /// # async fn example() {
     /// let config = Config::default();
     /// let provider = Arc::new(OllamaProvider::new(&config.llm.base_url));
-    /// let manager = Rag::with_persistence(&config, provider);
-    /// 
-    /// // Load previously indexed documents
-    /// manager.load().await.unwrap();
+    /// let manager = Rag::new(&config, provider).await.unwrap();
     /// # }
     /// ```
-    pub fn with_persistence(config: &Config, provider: Arc<dyn Provider>) -> Self {
+    pub async fn new(config: &Config, provider: Arc<dyn Provider>) -> Result<Self> {
         let embedder = Embedder::new(provider, &config.rag.embedding_model);
-        let store = VectorStore::with_persistence(&config.storage.vector_db_path);
+        let store = create_vector_store(
+            config.rag.clone(),
+            &config.rag.vector_db.collection_name,
+            384,
+        ).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         
-        Self {
+        Ok(Self {
             embedder,
             store,
             chunk_size: config.rag.chunk_size,
             chunk_overlap: config.rag.chunk_overlap,
             top_k: config.rag.top_k,
             indexer_config: config.rag.indexer.clone(),
-        }
+        })
     }
-    
-    /// Loads previously indexed documents from disk.
-    ///
-    /// Only works if the manager was created with [`with_persistence`](Self::with_persistence).
-    ///
-    /// # Returns
-    ///
-    /// The number of documents loaded.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if loading fails.
-    pub async fn load(&self) -> Result<usize> {
-        Ok(self.store.load().await?)
-    }
-    
-    /// Saves indexed documents to disk.
-    ///
-    /// Only works if the manager was created with [`with_persistence`](Self::with_persistence).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if saving fails.
-    pub async fn save(&self) -> Result<()> {
-        Ok(self.store.save().await?)
-    }
-    
     /// Adds a single piece of text to the knowledge base.
     ///
     /// The text is embedded and stored as a single document. For large texts,
@@ -197,11 +148,12 @@ impl Rag {
     pub async fn add_knowledge(&self, content: &str, source: &str) -> Result<()> {
         let embedding = self.embedder.embed(content).await?;
         
-        let id = format!("{}_{}", source, self.store.count());
+        let count = self.store.count().await.unwrap_or(0);
+        let id = format!("{}_{}", source, count);
         let document = Document::new(id, content, embedding)
             .with_metadata("source", source);
         
-        self.store.add(document);
+        self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         Ok(())
     }
     
@@ -234,7 +186,17 @@ impl Rag {
         let mut indexed_count = 0;
         
         for file in files {
+            if file.content.is_empty() {
+                eprintln!("WARNING: File has empty content: {}", file.path.display());
+                continue;
+            }
+            
             let chunks = chunk_text(&file.content, self.chunk_size, self.chunk_overlap);
+            
+            if chunks.is_empty() {
+                eprintln!("WARNING: No chunks created for file: {}", file.path.display());
+                continue;
+            }
             
             for (i, chunk) in chunks.into_iter().enumerate() {
                 let embedding = self.embedder.embed(&chunk).await?;
@@ -244,15 +206,12 @@ impl Rag {
                     .with_metadata("source", file.path.to_string_lossy())
                     .with_metadata("chunk", i.to_string());
                 
-                self.store.add(document);
+                self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
             }
             
             indexed_count += 1;
             println!("✓ Indexed: {}", file.path.display());
         }
-        
-        // Auto-save if persistence is enabled
-        self.store.save().await?;
         
         Ok(indexed_count)
     }
@@ -333,11 +292,8 @@ impl Rag {
                 .with_metadata("source", file_path)
                 .with_metadata("chunk", i.to_string());
             
-            self.store.add(document);
+            self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         }
-        
-        // Auto-save if persistence is enabled
-        self.store.save().await?;
         
         println!("✓ Indexed: {} ({} chunks)", file_path, chunk_count);
         Ok(chunk_count)
@@ -372,12 +328,15 @@ impl Rag {
     /// Returns an error if embedding generation fails.
     ///
     pub async fn retrieve_context(&self, query: &str) -> Result<String> {
-        if self.store.count() == 0 {
+        let count = self.store.count().await.unwrap_or(0);
+        if count == 0 {
             return Ok(String::new());
         }
         
         let query_embedding = self.embedder.embed(query).await?;
-        let results = self.store.search(&query_embedding, self.top_k);
+        let results = self.store.search(&query_embedding)
+            .await
+            .map_err(|e| RagError::Retrieval(e.to_string()))?;
         
         if results.is_empty() {
             return Ok(String::new());
@@ -396,13 +355,68 @@ impl Rag {
     ///
     /// Note: each indexed file is split into multiple chunks, so this represents
     /// chunk count, not file count.
-    pub fn count(&self) -> usize {
-        self.store.count()
+    pub async fn count(&self) -> usize {
+        self.store.count().await.unwrap_or(0)
     }
     
     /// Removes all documents from the knowledge base.
-    pub fn clear(&self) {
-        self.store.clear();
+    pub async fn clear(&self) -> Result<()> {
+        self.store.clear().await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+        Ok(())
+    }
+    
+    /// Returns all unique file paths that have been indexed in the knowledge base.
+    ///
+    /// This method queries Qdrant to retrieve all unique source file paths
+    /// from indexed documents. Useful for displaying indexing status in UIs.
+    pub async fn get_indexed_paths(&self) -> Result<Vec<String>> {
+        self.store.get_indexed_paths().await
+            .map_err(|e| RagError::Retrieval(e.to_string()))
+    }
+
+    /// Removes documents from the knowledge base by source path.
+    ///
+    /// This method removes all documents that match the given source path.
+    /// If the path is a directory, all files within that directory are removed.
+    /// If the path is a file, only that specific file is removed.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_path` - The file or directory path to remove from the knowledge base
+    ///
+    /// # Returns
+    ///
+    /// The number of document chunks removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the removal operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{Config, rag::Manager, ollama::Client};
+    /// # async fn example(manager: Manager) {
+    /// // Remove a specific file
+    /// let removed = manager.remove_from_knowledge_base("./src/main.rs").await.unwrap();
+    /// println!("Removed {} chunks", removed);
+    ///
+    /// // Remove an entire directory
+    /// let removed = manager.remove_from_knowledge_base("./docs").await.unwrap();
+    /// println!("Removed {} chunks", removed);
+    /// # }
+    /// ```
+    pub async fn remove_from_knowledge_base(&self, source_path: &str) -> Result<usize> {
+        let removed = self.store.remove_by_source(source_path).await
+            .map_err(|e| RagError::Retrieval(e.to_string()))?;
+        
+        if removed > 0 {
+            println!("✓ Removed {} document chunks from: {}", removed, source_path);
+        } else {
+            println!("⚠ No documents found for: {}", source_path);
+        }
+        
+        Ok(removed)
     }
 }
 

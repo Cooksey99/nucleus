@@ -16,6 +16,7 @@ pub mod config;
 pub mod detection;
 pub mod patterns;
 pub mod provider;
+pub mod qdrant_helper;
 pub mod rag;
 pub mod server;
 
@@ -28,13 +29,6 @@ pub use server::Server;
 
 // Provider exports
 pub use provider::{
-    Provider,
-    ChatRequest,
-    ChatResponse,
-    Message,
-    Tool,
-    ToolCall,
+    ChatRequest, ChatResponse, Message, Provider, ProviderError, Tool, ToolCall, ToolCallFunction,
     ToolFunction,
-    ToolCallFunction,
-    ProviderError,
 };

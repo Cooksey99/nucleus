@@ -1,4 +1,4 @@
-//! Example demonstrating RAG indexing with persistent storage.
+//! Example demonstrating RAG indexing with embedded storage.
 //!
 //! This example shows how to:
 //! - Index directories into the RAG vector database
@@ -14,67 +14,80 @@ async fn main() -> anyhow::Result<()> {
     println!("Nucleus - RAG Indexing Example");
     println!("==============================\n");
     
-    // Load or create config
-    let mut config = Config::load_or_default();
+    let config = Config::load_or_default();
+    print_rag_config(&config);
     
-    // Configure where to store the vector database
-    config.storage.vector_db_path = "./data/vectordb".to_string();
-    
-    println!("Configuration:");
-    println!("  Vector DB Path: {}/vector_store.json", config.storage.vector_db_path);
-    println!("  Embedding Model: {}", config.rag.embedding_model);
-    println!("  Chunk Size: {} bytes", config.rag.chunk_size);
-    println!("  Chunk Overlap: {} bytes\n", config.rag.chunk_overlap);
-    
-    // Create chat manager with empty plugin registry
     let registry = Arc::new(PluginRegistry::new(Permission::READ_WRITE));
     let manager = ChatManager::new(config.clone(), registry).await?;
     
-    // Load previously indexed documents
-    println!("Loading knowledge base...");
-    let loaded = manager.load_knowledge_base().await?;
-    if loaded > 0 {
-        println!("✓ Loaded {} documents from previous session\n", loaded);
-    } else {
-        println!("  No existing documents (first run)\n");
-    }
-    
-    // Check current count
-    let doc_count = manager.knowledge_base_count();
+    let doc_count = manager.knowledge_base_count().await;
     println!("Current knowledge base: {} documents\n", doc_count);
     
-    // Example: Index the src directory
     if doc_count == 0 {
-        println!("=== Indexing Example ===");
-        println!("Indexing nucleus-core/src directory...");
-        println!("This may take a minute...\n");
-        
-        match manager.index_directory("./nucleus-core/src").await {
-            Ok(count) => {
-                println!("✓ Indexed {} files!", count);
-                println!("  Total documents: {}\n", manager.knowledge_base_count());
-            }
-            Err(e) => {
-                eprintln!("Warning: Could not index directory: {}", e);
-                eprintln!("Make sure Ollama is running and the embedding model is installed.\n");
-            }
-        }
+        index_example_directory(&manager).await;
     }
     
-    // Example: Query the knowledge base
-    println!("=== Query Example ===");
-    println!("Asking: 'What is the RAG system?'\n");
+    query_example(&manager).await?;
     
-    let response = manager.query(
-        "Based on the codebase, what is the RAG system and how does it work?"
-    ).await?;
-    
-    println!("AI Response:\n{}\n", response);
-    
-    println!("\n✓ Example complete!");
-    println!("\nVector database location: {}/vector_store.json", config.storage.vector_db_path);
-    println!("Knowledge base: {} documents", manager.knowledge_base_count());
-    println!("All indexed data persists across runs.");
+    print_summary(&config, manager.knowledge_base_count().await);
     
     Ok(())
+}
+
+fn print_rag_config(config: &Config) {
+    println!("RAG Configuration:");
+    match &config.rag.storage_mode {
+        nucleus_core::config::StorageMode::Embedded { path } => {
+            println!("  Storage: Embedded at {}", path);
+        }
+        nucleus_core::config::StorageMode::Grpc { url } => {
+            println!("  Storage: Remote gRPC @ {}", url);
+        }
+    }
+    println!("  Collection: {}", config.rag.vector_db.collection_name);
+    println!("  Embedding: {}", config.rag.embedding_model);
+    println!("  Chunking: {} bytes (overlap: {})", config.rag.chunk_size, config.rag.chunk_overlap);
+    println!();
+}
+
+async fn index_example_directory(manager: &ChatManager) {
+    println!("=== Indexing Example ===");
+    println!("Indexing nucleus-core/src directory...\n");
+    
+    match manager.index_directory("./nucleus-core/src").await {
+        Ok(count) => {
+            let total = manager.knowledge_base_count().await;
+            println!("\n✓ Indexed {} files ({} total documents)\n", count, total);
+        }
+        Err(e) => {
+            eprintln!("⚠ Could not index directory: {}", e);
+            eprintln!("  Make sure Ollama is running and the embedding model is installed.\n");
+        }
+    }
+}
+
+async fn query_example(manager: &ChatManager) -> anyhow::Result<()> {
+    println!("=== Query Example ===");
+    println!("Query: 'Where is the index_directory function implemented?'\n");
+    
+    let response = manager.query(
+        "In which file and module is the index_directory function implemented? What does it do?"
+    ).await?;
+    
+    println!("Response:\n{}\n", response);
+    Ok(())
+}
+
+fn print_summary(config: &Config, doc_count: usize) {
+    println!("=== Summary ===");
+    match &config.rag.storage_mode {
+        nucleus_core::config::StorageMode::Embedded { path } => {
+            println!("Collection '{}' at {}", config.rag.vector_db.collection_name, path);
+        }
+        nucleus_core::config::StorageMode::Grpc { url } => {
+            println!("Collection '{}' @ {}", config.rag.vector_db.collection_name, url);
+        }
+    }
+    println!("{} documents indexed", doc_count);
+    println!("Data persists across restarts");
 }
