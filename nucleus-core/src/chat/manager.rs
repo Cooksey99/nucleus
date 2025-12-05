@@ -45,13 +45,12 @@ use tracing::{debug, info};
 ///
 /// ```no_run
 /// use nucleus_core::{ChatManager, Config};
-/// use nucleus_plugin::PluginRegistry;
-/// use std::sync::Arc;
+/// use nucleus_plugin::{PluginRegistry, Permission};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// let config = Config::load_or_default();
-/// let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
-/// let manager = ChatManager::new(config, registry);
+/// let registry = PluginRegistry::new(Permission::READ_ONLY);
+/// let manager = ChatManager::new(config, registry).await?;
 ///
 /// let response = manager.query("What files are in the current directory?").await?;
 /// println!("AI: {}", response);
@@ -92,23 +91,24 @@ impl ChatManager {
     /// # Arguments
     ///
     /// * `config` - Nucleus configuration including LLM settings
-    /// * `registry` - Plugin registry containing available tools
+    /// * `registry` - Plugin registry containing available tools. The registry is wrapped
+    ///   in an `Arc` internally and shared between the manager and provider for tool execution.
     ///
     /// # Examples
     ///
     /// ```no_run
     /// use nucleus_core::{ChatManager, Config};
     /// use nucleus_plugin::{PluginRegistry, Permission};
-    /// use std::sync::Arc;
     ///
-    /// # fn example() -> anyhow::Result<()> {
+    /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
-    /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
-    /// let manager = ChatManager::new(config, registry);
+    /// let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let manager = ChatManager::new(config, registry).await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn new(config: Config, registry: Arc<PluginRegistry>) -> Result<Self> {
+    pub async fn new(config: Config, registry: PluginRegistry) -> Result<Self> {
+        let registry = Arc::new(registry);
         let provider: Arc<dyn Provider> = Arc::new(MistralRsProvider::new(&config, Arc::clone(&registry)).await?);
         let rag = Rag::new(&config, provider.clone()).await?;
 
@@ -129,12 +129,12 @@ impl ChatManager {
     /// use nucleus_plugin::{PluginRegistry, Permission};
     /// use std::sync::Arc;
     ///
-    /// # fn example() -> anyhow::Result<()> {
+    /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
-    /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
+    /// let registry = PluginRegistry::new(Permission::READ_ONLY);
     /// 
-    /// let manager = ChatManager::new(config, registry)
-    ///     .with_provider(Arc::new(MistralRsProvider::new("qwen3:0.6b")));
+    /// let manager = ChatManager::new(config, registry).await?
+    ///     .with_provider(Arc::new(MistralRsProvider::new("qwen3:0.6b"))).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -149,13 +149,13 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use nucleus_core::{ChatManager, Config, Rag};
-    /// use nucleus_plugin::{PluginRegistry, Permission};
-    /// use std::sync::Arc;
+    /// # use nucleus_core::{ChatManager, Config, Rag};
+    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # use std::sync::Arc;
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
-    /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
+    /// let registry = PluginRegistry::new(Permission::READ_ONLY);
     /// let provider = Arc::new(/* create provider */);
     /// 
     /// let custom_rag = Rag::new(&config, provider).await?;
@@ -185,12 +185,11 @@ impl ChatManager {
     ///
     /// ```no_run
     /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_plugin::PluginRegistry;
-    /// # use std::sync::Arc;
+    /// # use nucleus_plugin::{PluginRegistry, Permission};
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
-    /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
-    /// let manager = ChatManager::new(config, registry);
+    /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let manager = ChatManager::new(config, registry).await?;
     /// let count = manager.load_knowledge_base().await?;
     /// println!("Loaded {} documents", count);
     /// # Ok(())
@@ -313,9 +312,16 @@ impl ChatManager {
     where
         F: FnMut(&str) + Send,
     {
-        // Retrieve relevant context from knowledge base
-        let context = self.rag.retrieve_context(user_message).await
-            .context("Failed to retrieve knowledge base context")?;
+        // Retrieve relevant context from knowledge base if available
+        let context = if self.rag.count().await > 0 {
+            self.rag.retrieve_context(user_message).await
+                .unwrap_or_else(|e| {
+                    debug!("Could not retrieve RAG context: {}", e);
+                    String::new()
+                })
+        } else {
+            String::new()
+        };
         
         // Construct user message with context if available
         let enhanced_message = if !context.is_empty() {

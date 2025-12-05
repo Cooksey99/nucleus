@@ -1,5 +1,4 @@
 use std::io::{self, Write};
-use std::sync::Arc;
 
 use nucleus::{ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
@@ -14,7 +13,7 @@ async fn main() {
         .init();
 
     let config = Config::load_or_default();
-    let registry = Arc::new(PluginRegistry::new(Permission::NONE));
+    let registry = PluginRegistry::new(Permission::NONE);
     let manager = ChatManager::new(config, registry)
         .await
         .expect("Failed to create chat manager");
