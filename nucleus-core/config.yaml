@@ -21,10 +21,13 @@ rag:
   chunk_size: 512
   chunk_overlap: 50
   top_k: 5
+  # Optional: Configure vector database
+  # vector_db:
+  #   collection_name: "nucleus_kb"
 
 storage:
-  vector_db_path: "./data/vectordb"
   chat_history_path: "./data/history"
+  tool_state_path: "./data/tool_state"
   
 personalization:
   learn_from_interactions: true

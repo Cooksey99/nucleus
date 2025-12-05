@@ -23,8 +23,8 @@ rag:
   top_k: 5
 
 storage:
-  vector_db_path: "./data/vectordb"
   chat_history_path: "./data/history"
+  tool_state_path: "./data/tool_state"
   
 personalization:
   learn_from_interactions: true

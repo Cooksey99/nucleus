@@ -16,6 +16,7 @@ anyhow.workspace = true
 nucleus-plugin = { path = "../nucleus-plugin" }
 qdrant-client = { version = "1.11", default-features = false, features = ["serde"] }
 lancedb = "0.22"
+arrow-array = "56.2"
 async-trait = "0.1"
 
 [dev-dependencies]

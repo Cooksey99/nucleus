@@ -59,6 +59,9 @@ pub struct LlmConfig {
     pub context_length: usize,
 }
 
+/// Configuration for RAG.
+///
+/// This includes the actual RAG settings, as well as the storage type (eg. Embedded, gRPC, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RagConfig {
     pub embedding_model: String,
@@ -69,7 +72,10 @@ pub struct RagConfig {
     pub indexer: IndexerConfig,
     /// Vector database storage mode
     #[serde(default)]
-    pub storage: StorageMode,
+    pub storage_mode: StorageMode,
+    /// Vector database configuration (collection name, etc.)
+    #[serde(default)]
+    pub vector_db: VectorDbConfig,
 }
 
 /// Configuration for file indexing behavior.
@@ -79,7 +85,7 @@ pub struct IndexerConfig {
     /// Empty list (default) means index all readable text files
     #[serde(default)]
     pub extensions: Vec<String>,
-    
+
     /// Patterns to exclude - skips directories/files containing these strings
     /// Default excludes: build artifacts, version control, package managers, temp files
     #[serde(default = "default_exclude_patterns")]
@@ -93,7 +99,7 @@ fn default_exclude_patterns() -> Vec<String> {
 impl Default for IndexerConfig {
     fn default() -> Self {
         Self {
-            extensions: Vec::new(),  // Empty = index all text files
+            extensions: Vec::new(), // Empty = index all text files
             exclude_patterns: default_exclude_patterns(),
         }
     }
@@ -112,7 +118,7 @@ pub enum StorageMode {
 impl Default for StorageMode {
     fn default() -> Self {
         Self::Embedded {
-            path: "./data/qdrant".to_string(),
+            path: "./data/nucleus_vectordb".to_string(),
         }
     }
 }
@@ -125,26 +131,29 @@ impl Default for RagConfig {
             chunk_overlap: 50,
             top_k: 5,
             indexer: IndexerConfig::default(),
-            storage: StorageMode::default(),
+            storage_mode: StorageMode::default(),
+            vector_db: VectorDbConfig::default(),
         }
     }
 }
 
-/// Vector database for RAG system
+/// General storage configuration for non-RAG persistence.
+///
+/// This covers chat history, user preferences, tool state, etc.
+/// RAG vector database is configured separately in `RagConfig`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConfig {
-    pub vector_db_path: String,
     pub chat_history_path: String,
-    
-    /// Qdrant vector database configuration
-    #[serde(default)]
-    pub qdrant: QdrantConfig,
+    pub tool_state_path: String,
 }
 
-/// Qdrant vector database configuration
+/// Vector database configuration (collection/index name, etc.).
+///
+/// Provider-agnostic configuration that works with any vector DB backend
+/// (Qdrant, LanceDB, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QdrantConfig {
-    /// Collection name for storing vectors
+pub struct VectorDbConfig {
+    /// Collection/index name for storing vectors
     pub collection_name: String,
 }
 
@@ -164,7 +173,7 @@ impl Default for PersonalizationConfig {
     }
 }
 
-impl Default for QdrantConfig {
+impl Default for VectorDbConfig {
     fn default() -> Self {
         Self {
             collection_name: "nucleus_kb".to_string(),
@@ -175,9 +184,8 @@ impl Default for QdrantConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            vector_db_path: "./data/vectordb".to_string(),
             chat_history_path: "./data/history".to_string(),
-            qdrant: QdrantConfig::default(),
+            tool_state_path: "./data/tool_state".to_string(),
         }
     }
 }
@@ -197,7 +205,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             llm: LlmConfig::default(),
-            system_prompt: "You are a helpful AI assistant specializing in programming and development tasks.".to_string(),
+            system_prompt:
+                "You are a helpful AI assistant specializing in programming and development tasks."
+                    .to_string(),
             rag: RagConfig::default(),
             storage: StorageConfig::default(),
             personalization: PersonalizationConfig::default(),
@@ -235,5 +245,25 @@ mod tests {
         assert!(perm.read);
         assert!(perm.write);
         assert!(perm.command);
+    }
+
+    #[test]
+    fn test_vector_db_config_default() {
+        let config = VectorDbConfig::default();
+        assert_eq!(config.collection_name, "nucleus_kb");
+    }
+
+    #[test]
+    fn test_storage_config_defaults() {
+        let config = StorageConfig::default();
+        assert_eq!(config.chat_history_path, "./data/history");
+        assert_eq!(config.tool_state_path, "./data/tool_state");
+    }
+
+    #[test]
+    fn test_rag_config_with_vector_db() {
+        let config = RagConfig::default();
+        assert_eq!(config.vector_db.collection_name, "nucleus_kb");
+        assert_eq!(config.embedding_model, "nomic-embed-text");
     }
 }

@@ -5,7 +5,7 @@
 
 use super::store::VectorStore;
 use super::types::{Document, SearchResult};
-use crate::config::StorageMode;
+use crate::config::{RagConfig, StorageMode};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use qdrant_client::{
@@ -37,6 +37,7 @@ use std::sync::Arc;
 ///
 #[derive(Clone)]
 pub struct QdrantStore {
+    config: RagConfig,
     client: Arc<Qdrant>,
     collection_name: String,
     vector_size: u64,
@@ -89,11 +90,11 @@ impl VectorStore for QdrantStore {
     /// # Returns
     ///
     /// A vector of search results, sorted by descending similarity score.
-    async fn search(&self, query_embedding: &[f32], top_k: u64) -> Result<Vec<SearchResult>> {
+    async fn search(&self, query_embedding: &[f32]) -> Result<Vec<SearchResult>> {
         let search_result = self
             .client
             .search_points(
-                SearchPointsBuilder::new(&self.collection_name, query_embedding.to_vec(), top_k)
+                SearchPointsBuilder::new(&self.collection_name, query_embedding.to_vec(), self.config.top_k as u64)
                     .with_payload(true)
             )
             .await
@@ -301,14 +302,14 @@ impl QdrantStore {
     /// * `collection_name` - Name of the collection to use
     /// * `vector_size` - Dimension of the embedding vectors
     pub async fn new(
-        storage_mode: &StorageMode,
+        config: RagConfig,
         collection_name: &str,
         vector_size: u64,
     ) -> Result<Self> {
-        let client = match storage_mode {
+        let client = match &config.storage_mode {
             StorageMode::Grpc { url } => {
                 Arc::new(
-                    Qdrant::from_url(url)
+                    Qdrant::from_url(&url)
                         .build()
                         .context("Failed to connect to Qdrant server")?
                 )
@@ -319,6 +320,7 @@ impl QdrantStore {
         };
 
         let store = Self {
+            config,
             client,
             collection_name: collection_name.to_string(),
             vector_size,
@@ -361,10 +363,9 @@ mod tests {
     // #[tokio::test]
     #[ignore] // Requires Qdrant server running
     async fn test_qdrant_store_grpc() {
-        let storage = StorageMode::Grpc {
-            url: "http://localhost:6334".to_string(),
-        };
-        let store = QdrantStore::new(&storage, "test_collection_grpc", 3)
+        let config = RagConfig::default();
+        
+        let store = QdrantStore::new(config, "test_collection_grpc", 3)
             .await
             .unwrap();
 

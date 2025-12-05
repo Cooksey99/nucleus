@@ -5,7 +5,7 @@
 use super::types::{Document, SearchResult};
 use super::qdrant_store::QdrantStore;
 use super::lancedb_store::LanceDbStore;
-use crate::config::StorageMode;
+use crate::config::{RagConfig, StorageMode};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -29,7 +29,7 @@ pub trait VectorStore: Send + Sync {
     /// # Returns
     ///
     /// A vector of search results, sorted by descending similarity score.
-    async fn search(&self, query_embedding: &[f32], top_k: u64) -> Result<Vec<SearchResult>>;
+    async fn search(&self, query_embedding: &[f32]) -> Result<Vec<SearchResult>>;
 
     /// Returns the total number of documents in the store.
     async fn count(&self) -> Result<usize>;
@@ -59,7 +59,7 @@ pub trait VectorStore: Send + Sync {
 ///
 /// # Arguments
 ///
-/// * `storage_mode` - Storage configuration (embedded with path or gRPC with URL)
+/// * `config` - RAG configuration including storage mode and top_k
 /// * `collection_name` - Name of the collection/table to use
 /// * `vector_size` - Dimension of the embedding vectors
 ///
@@ -67,18 +67,17 @@ pub trait VectorStore: Send + Sync {
 ///
 /// A trait object that can be used for all vector store operations.
 pub async fn create_vector_store(
-    storage_mode: &StorageMode,
+    config: RagConfig,
     collection_name: &str,
     vector_size: u64,
 ) -> Result<Arc<dyn VectorStore>> {
-    match storage_mode {
+    match config.storage_mode.clone() {
         StorageMode::Embedded { path } => {
-            let store = LanceDbStore::new(path, collection_name, vector_size).await?;
+            let store = LanceDbStore::new(config, &path, collection_name, vector_size.into()).await?;
             Ok(Arc::new(store))
         }
-        StorageMode::Grpc { url } => {
-            let grpc_mode = StorageMode::Grpc { url: url.clone() };
-            let store = QdrantStore::new(&grpc_mode, collection_name, vector_size).await?;
+        StorageMode::Grpc { .. } => {
+            let store = QdrantStore::new(config, collection_name, vector_size).await?;
             Ok(Arc::new(store))
         }
     }

@@ -112,8 +112,8 @@ impl Rag {
     pub async fn new(config: &Config, ollama_client: Client) -> Self {
         let embedder = Embedder::new(ollama_client, &config.rag.embedding_model);
         let store = create_vector_store(
-            &config.rag.storage,
-            &config.storage.qdrant.collection_name,
+            config.rag.clone(),
+            &config.rag.vector_db.collection_name,
             768, // nomic-embed-text dimension
         )
         .await
@@ -333,7 +333,7 @@ impl Rag {
         }
         
         let query_embedding = self.embedder.embed(query).await?;
-        let results = self.store.search(&query_embedding, self.top_k as u64)
+        let results = self.store.search(&query_embedding)
             .await
             .map_err(|e| RagError::Retrieval(e.to_string()))?;
         
