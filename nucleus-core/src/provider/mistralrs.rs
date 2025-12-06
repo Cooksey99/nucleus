@@ -128,13 +128,12 @@ impl MistralRsProvider {
                 ));
             }
             
-            let mut builder = GgufModelBuilder::new(parts[0], vec![parts[1]])
+            let builder = GgufModelBuilder::new(parts[0], vec![parts[1]])
                 .with_logging()
                 .with_throughput_logging();
 
-            for plugin in registry.all().into_iter() {
-                builder = builder.with_tool_callback(plugin.name(), plugin_to_callback(plugin));
-            }
+            // NOTE: Not registering tool callbacks - nucleus handles tool execution
+            // via the streaming response tool_calls field instead
 
             builder.build()
                 .await
@@ -148,9 +147,8 @@ impl MistralRsProvider {
                 .with_logging()
                 .with_throughput_logging();
 
-            for plugin in registry.all().into_iter() {
-                builder = builder.with_tool_callback(plugin.name(), plugin_to_callback(plugin));
-            }
+            // NOTE: Not registering tool callbacks - nucleus handles tool execution
+            // via the streaming response tool_calls field instead
             
             builder = builder.with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
                 .context("Unable to build with paged attention")
@@ -265,6 +263,7 @@ impl Provider for MistralRsProvider {
                 .collect();
             
             info!(tool_count = mistral_tools.len(), "Setting tools with ToolChoice::Auto");
+            debug!(tools = ?mistral_tools, "Final tool definitions being sent to model");
             builder = builder.set_tools(mistral_tools).set_tool_choice(ToolChoice::Auto);
         }
 
@@ -289,8 +288,19 @@ impl Provider for MistralRsProvider {
         let mut final_tool_calls = None;
         let mut message_role = String::from("assistant"); // Default, will be updated from stream
 
-        // Process stream chunks
-        while let Some(chunk) = stream.next().await {
+        // Process stream chunks with timeout per chunk to avoid hangs
+        let chunk_timeout = std::time::Duration::from_secs(30);
+        loop {
+            let next_fut = stream.next();
+            let chunk_opt = tokio::time::timeout(chunk_timeout, next_fut)
+                .await
+                .map_err(|_| {
+                    warn!("Stream chunk timed out after {} seconds", chunk_timeout.as_secs());
+                    ProviderError::Other(
+                        format!("No response chunk received after {} seconds. Generation stalled.", chunk_timeout.as_secs())
+                    )
+                })?;
+            let Some(chunk) = chunk_opt else { break; };
             match chunk {
                 Response::Chunk(resp) => {
                     if let Some(choice) = resp.choices.first() {

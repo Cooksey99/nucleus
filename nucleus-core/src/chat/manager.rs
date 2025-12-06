@@ -575,7 +575,7 @@ impl ChatManagerBuilder {
     /// # }
     /// ````
     /// 
-    /// **Local GGUF (Ollama or direct path)**
+    /// **Local GGUF Blob (Ollama) — NOT CURRENTLY SUPPORTED**
     /// ```
     /// let manager = ChatManager::builder(config, registry)
     ///     .with_llm_model("~/.ollama/models/blobs/sha256-0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5")  // Q4_K_M
