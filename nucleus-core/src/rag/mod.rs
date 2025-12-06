@@ -376,26 +376,42 @@ impl Rag {
     /// Returns an error if embedding generation fails.
     ///
     pub async fn retrieve_context(&self, query: &str) -> Result<String> {
+        use tracing::{debug, info};
+        
         let count = self.store.count().await.unwrap_or(0);
+        debug!("Knowledge base count: {}", count);
         if count == 0 {
+            debug!("Knowledge base is empty, returning empty context");
             return Ok(String::new());
         }
         
+        debug!("Generating query embedding for: {}", query);
         let query_embedding = self.embedder.embed(query).await?;
+        debug!("Query embedding generated, dimension: {}", query_embedding.len());
+        
+        debug!("Searching vector store...");
         let results = self.store.search(&query_embedding)
             .await
             .map_err(|e| RagError::Retrieval(e.to_string()))?;
         
+        info!("Found {} results from RAG search", results.len());
+        
         if results.is_empty() {
+            debug!("No results found, returning empty context");
             return Ok(String::new());
         }
         
         let mut context = String::from("\n\nRelevant context from your knowledge base:\n");
         
         for (i, result) in results.iter().enumerate() {
+            debug!("Result {}: score={}, source={:?}", 
+                i + 1, 
+                result.score, 
+                result.document.metadata.get("source"));
             context.push_str(&format!("\n[{}] {}\n", i + 1, result.document.content));
         }
         
+        info!("Generated context with {} results", results.len());
         Ok(context)
     }
     
@@ -467,22 +483,3 @@ impl Rag {
         Ok(removed)
     }
 }
-
-
-// #[cfg(test)]
-// mod tests {
-//     use crate::ChatManager;
-
-//     use super::*;
-
-//     #[tokio::test]
-//     async fn test_indexing() {
-//         let config = Config::load_or_default();
-//         let manager = Rag::new(&config, client);
-//         let content_count = manager.count();
-
-//         manager.add_knowledge("My name is Andrew Cooksey", "personal_info").await.unwrap();
-
-//         assert_eq!(manager.count(), content_count + 1);
-//     }
-// }

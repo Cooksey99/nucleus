@@ -113,6 +113,7 @@ impl Provider for OllamaProvider {
                         message: Message {
                             role: ollama_response.message.role.clone(),
                             content: ollama_response.message.content.clone(),
+                            context: None,
                             images: ollama_response.message.images.clone(),
                             tool_calls: ollama_response.message.tool_calls.as_ref().map(|tcs| {
                                 tcs.iter().map(|tc| ToolCall {

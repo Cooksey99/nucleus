@@ -100,12 +100,13 @@ impl RequestHandler {
     fn build_messages(&self, request: Request) -> Vec<crate::provider::Message> {
         use crate::provider::Message;
         
-        let mut messages = vec![Message::system(&self.config.system_prompt)];
+        let mut messages = vec![Message::system(None, &self.config.system_prompt)];
         
         if let Some(history) = request.history {
             for msg in history {
                 messages.push(Message {
                     role: "user".to_string(),
+                    context: None,
                     content: msg.content.clone(),
                     images: None,
                     tool_calls: None,
@@ -113,7 +114,7 @@ impl RequestHandler {
             }
         }
         
-        messages.push(Message::user(&request.content));
+        messages.push(Message::user(None, &request.content));
         messages
     }
 }

@@ -289,6 +289,7 @@ impl Provider for MistralRsProvider {
                                 message: Message {
                                     role: message_role.clone(),
                                     content: accumulated_content.clone(),
+                                    context: None,
                                     images: None,
                                     tool_calls: None,
                                 },
@@ -326,6 +327,7 @@ impl Provider for MistralRsProvider {
             message: Message {
                 role: message_role,
                 content: accumulated_content,
+                context: None,
                 images: None,
                 tool_calls: final_tool_calls,
             },

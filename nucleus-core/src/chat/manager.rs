@@ -339,24 +339,32 @@ impl ChatManager {
         F: FnMut(&str) + Send,
     {
         // Retrieve relevant context from knowledge base if available
-        let context = if self.rag.count().await > 0 {
+        let rag_count = self.rag.count().await;
+        debug!("RAG knowledge base has {} documents", rag_count);
+        
+        // Context retrieved from RAG
+        let context = if rag_count > 0 {
+            debug!("Retrieving RAG context for query: {}", user_message);
             self.rag.retrieve_context(user_message).await
                 .unwrap_or_else(|e| {
                     debug!("Could not retrieve RAG context: {}", e);
                     String::new()
                 })
         } else {
+            debug!("RAG knowledge base is empty, skipping context retrieval");
             String::new()
         };
         
         // Construct user message with context if available
         let enhanced_message = if !context.is_empty() {
+            debug!("Enhanced message with {} characters of RAG context", context.len());
             format!("{}{}", context, user_message)
         } else {
+            debug!("No RAG context available, using original message");
             user_message.to_string()
         };
         
-        let mut messages = vec![Message::user(&enhanced_message)];
+        let mut messages = vec![Message::user(Some(context.clone()), &enhanced_message)];
 
         let tools = self.build_tools();
 
@@ -408,6 +416,7 @@ impl ChatManager {
                 // Add the assistant's message with tool calls to conversation history
                 messages.push(Message {
                     role: "assistant".to_string(),
+                    context: Some(context.to_string()),
                     content: assistant_message.content.clone(),
                     images: None,
                     tool_calls: Some(tool_calls.clone()),
@@ -428,6 +437,7 @@ impl ChatManager {
                     // Add tool result as a message for the LLM to synthesize
                     messages.push(Message {
                         role: "tool".to_string(),
+                        context: Some(context.to_string()),
                         content: result.content,
                         images: None,
                         tool_calls: None,

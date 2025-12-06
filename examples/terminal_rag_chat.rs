@@ -11,14 +11,16 @@ async fn main() {
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("nucleus_core=off".parse().unwrap())
-                .add_directive("mistralrs_core=off".parse().unwrap())
+                .add_directive("mistralrs_core=info".parse().unwrap())
         )
         .init();
 
     let config = Config::load_or_default();
     let registry = PluginRegistry::new(Permission::READ_ONLY);
 
-    let manager = ChatManager::new(config, registry).await.unwrap();    
+    let manager = ChatManager::builder(config, registry)
+        .with_llm_model("Qwen/Qwen3-8B")
+        .build().await.unwrap();    
     let doc_count = manager.knowledge_base_count().await;
 
     println!("Starting with {} docs\n\n", doc_count);

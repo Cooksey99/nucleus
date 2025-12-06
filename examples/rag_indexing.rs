@@ -18,9 +18,9 @@ async fn main() -> anyhow::Result<()> {
     print_rag_config(&config);
     
     let registry = PluginRegistry::new(Permission::READ_WRITE);
-    let manager = ChatManager::new(config.clone(), registry).await;
+    let manager = ChatManager::new(config.clone(), registry).await?;
     
-    let doc_count = manager.knowledge_base_count().await;
+    let doc_count = manager.knowledge_base_count().await?;
     println!("Current knowledge base: {} documents\n", doc_count);
     
     if doc_count == 0 {

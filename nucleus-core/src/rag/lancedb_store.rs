@@ -71,7 +71,13 @@ impl VectorStore for LanceDbStore {
     }
 
     async fn search(&self, query_embedding: &[f32]) -> Result<Vec<SearchResult>> {
+        use tracing::{debug, info};
+        
+        debug!("LanceDB search: opening table '{}'", self.table.name());
         let table = self.conn.open_table(self.table.name()).execute().await?;
+        
+        debug!("LanceDB search: querying with embedding of size {}, limit={}", 
+            query_embedding.len(), self.storage_config.top_k);
         let results = table
             .query()
             .limit(self.storage_config.top_k)
@@ -82,11 +88,14 @@ impl VectorStore for LanceDbStore {
 
         let batches: Vec<RecordBatch> = results.try_collect().await
             .context("Failed to collect query results")?;
+        
+        debug!("LanceDB search: received {} batches", batches.len());
 
         let mut search_results = Vec::new();
         
         for batch in batches {
             let num_rows = batch.num_rows();
+            debug!("Processing batch with {} rows", num_rows);
             
             let id_col = batch.column_by_name("id")
                 .context("Missing 'id' column")?;
@@ -132,6 +141,7 @@ impl VectorStore for LanceDbStore {
             }
         }
         
+        info!("LanceDB search complete: found {} results", search_results.len());
         Ok(search_results)
     }
 

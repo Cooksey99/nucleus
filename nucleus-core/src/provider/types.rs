@@ -1,7 +1,7 @@
 //! Common types for LLM providers.
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::{de::IntoDeserializer, Deserialize, Serialize};
 use thiserror::Error;
 
 /// Errors that can occur when interacting with a provider.
@@ -94,6 +94,9 @@ pub struct ChatResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: String,
+    /// Context, generally pulled from RAG
+    pub context: Option<String>,
+    /// Message input from the user
     pub content: String,
     
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -104,36 +107,40 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn system(content: impl Into<String>) -> Self {
+    pub fn system(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "system".to_string(),
+            context: Some(context).unwrap_or(None),
             content: content.into(),
             images: None,
             tool_calls: None,
         }
     }
     
-    pub fn user(content: impl Into<String>) -> Self {
+    pub fn user(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "user".to_string(),
+            context: Some(context).unwrap_or(None),
             content: content.into(),
             images: None,
             tool_calls: None,
         }
     }
     
-    pub fn assistant(content: impl Into<String>) -> Self {
+    pub fn assistant(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "assistant".to_string(),
+            context: Some(context).unwrap_or(None),
             content: content.into(),
             images: None,
             tool_calls: None,
         }
     }
     
-    pub fn tool(content: impl Into<String>) -> Self {
+    pub fn tool(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "tool".to_string(),
+            context: Some(context).unwrap_or(None),
             content: content.into(),
             images: None,
             tool_calls: None,
