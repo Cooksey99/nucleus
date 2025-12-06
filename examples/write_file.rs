@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Use the local Q4_K_M GGUF from Ollama's blob storage
     let manager = ChatManager::builder(config, registry)
-        .with_llm_model("~/.ollama/models/blobs/sha256-0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5")
+        .with_llm_model("Qwen/Qwen3-8B")
         .build()
         .await?;
 
