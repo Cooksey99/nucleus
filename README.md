@@ -50,25 +50,13 @@ The AI will:
 
 ## Installation
 
-### 1. Install Embedding Model
-
-Nucleus requires an embedding model for RAG (semantic search). Install the default model:
-
-```bash
-./install_models.sh
-```
-
-This downloads the `nomic-embed-text-v1.5` model (~483MB) from GitHub releases to `~/.cache/nucleus/models/`.
-
-The model is Apache 2.0 licensed and works offline after installation.
-
-### 2. Build Nucleus
+### 1. Build Nucleus
 
 ```bash
 cargo build --release
 ```
 
-### 3. Run Examples
+### 2. Run Examples
 
 ```bash
 cargo run --example read_file_line
