@@ -15,6 +15,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("nucleus_core=debug".parse().unwrap())
+                .add_directive("mistralrs_core=debug".parse().unwrap())
         )
         .init();
     
@@ -23,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
     // Create registry with WRITE permission (required for WriteFilePlugin)
     let mut registry = PluginRegistry::new(Permission::READ_WRITE);
     registry.register(Arc::new(WriteFilePlugin::new()));
-    let registry = Arc::new(registry);
+    let registry = registry;
 
     let manager = ChatManager::new(config, registry).await?;
 

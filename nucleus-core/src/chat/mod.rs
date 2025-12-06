@@ -1,3 +1,3 @@
 mod manager;
 
-pub use manager::ChatManager;
+pub use manager::{ChatManager, ChatManagerBuilder};

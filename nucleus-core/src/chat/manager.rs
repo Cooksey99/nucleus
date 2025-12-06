@@ -109,16 +109,41 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn new(config: Config, registry: PluginRegistry) -> Result<Self> {
-        let registry = Arc::new(registry);
-        let provider: Arc<dyn Provider> = Arc::new(MistralRsProvider::new(&config, Arc::clone(&registry)).await?);
-        let rag = Rag::new(&config, provider.clone()).await?;
+        Self::builder(config, registry).build().await
+    }
 
-        Ok(Self {
-            config,
-            provider,
-            registry,
-            rag,
-        })
+    /// Creates a builder for configuring the chat manager.
+    ///
+    /// The builder allows overriding LLM and embedding models while preserving
+    /// other configuration from the provided `Config`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use nucleus_core::{ChatManager, Config};
+    /// use nucleus_plugin::{PluginRegistry, Permission};
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let config = Config::load_or_default();
+    /// let registry = PluginRegistry::new(Permission::READ_ONLY);
+    ///
+    /// // Override LLM model
+    /// let manager = ChatManager::builder(config.clone(), registry.clone())
+    ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
+    ///     .build()
+    ///     .await?;
+    ///
+    /// // Override both LLM and embedding models
+    /// let manager = ChatManager::builder(config, registry)
+    ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
+    ///     .with_embedding_model("BAAI/bge-small-en-v1.5")
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn builder(config: Config, registry: PluginRegistry) -> ChatManagerBuilder {
+        ChatManagerBuilder::new(config, registry)
     }
     
     ///
@@ -453,5 +478,151 @@ impl ChatManager {
                 }
             })
             .collect()
+    }
+}
+
+/// Builder for configuring and creating a `ChatManager`.
+///
+/// This builder provides a fluent API for customizing LLM and embedding models
+/// while maintaining sensible defaults from the config.
+///
+/// # Examples
+///
+/// ```no_run
+/// use nucleus_core::{ChatManager, Config};
+/// use nucleus_plugin::{PluginRegistry, Permission};
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// let config = Config::load_or_default();
+/// let registry = PluginRegistry::new(Permission::READ_ONLY);
+///
+/// // Use defaults from config
+/// let manager = ChatManager::builder(config.clone(), registry.clone())
+///     .build()
+///     .await?;
+///
+/// // Override LLM model
+/// let manager = ChatManager::builder(config.clone(), registry.clone())
+///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
+///     .build()
+///     .await?;
+///
+/// // Override embedding model
+/// let manager = ChatManager::builder(config.clone(), registry.clone())
+///     .with_embedding_model("Qwen/Qwen3-Embedding-0.6B")
+///     .build()
+///     .await?;
+///
+/// // Override both
+/// let manager = ChatManager::builder(config, registry)
+///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
+///     .with_embedding_model("Qwen/Qwen3-Embedding-0.6B")
+///     .build()
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
+pub struct ChatManagerBuilder {
+    config: Config,
+    registry: PluginRegistry,
+    llm_model_override: Option<String>,
+    embedding_model_override: Option<String>,
+}
+
+impl ChatManagerBuilder {
+    /// Creates a new builder with the given config and registry.
+    pub fn new(config: Config, registry: PluginRegistry) -> Self {
+        Self {
+            config,
+            registry,
+            llm_model_override: None,
+            embedding_model_override: None,
+        }
+    }
+
+    /// Override the LLM model from config.
+    ///
+    /// # Arguments
+    ///
+    /// * `model` - Model identifier (HuggingFace repo, GGUF path, etc.)
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{ChatManager, Config};
+    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let config = Config::load_or_default();
+    /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let manager = ChatManager::builder(config, registry)
+    ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_llm_model(mut self, model: impl Into<String>) -> Self {
+        self.llm_model_override = Some(model.into());
+        self
+    }
+
+    /// Override the embedding model from config.
+    ///
+    /// # Arguments
+    ///
+    /// * `model` - Embedding model identifier (HuggingFace repo, GGUF path, etc.)
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{ChatManager, Config};
+    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let config = Config::load_or_default();
+    /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let manager = ChatManager::builder(config, registry)
+    ///     .with_embedding_model("Qwen/Qwen3-Embedding-0.6B")
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_embedding_model(mut self, model: impl Into<String>) -> Self {
+        self.embedding_model_override = Some(model.into());
+        self
+    }
+
+    /// Builds the `ChatManager` with the configured settings.
+    ///
+    /// This initializes the provider with the (possibly overridden) LLM model,
+    /// and the RAG system with the (possibly overridden) embedding model.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The provider fails to initialize
+    /// - The RAG system fails to initialize
+    pub async fn build(self) -> Result<ChatManager> {
+        let mut config = self.config;
+
+        if let Some(llm_model) = self.llm_model_override {
+            config.llm.model = llm_model;
+        }
+        if let Some(embedding_model) = self.embedding_model_override {
+            config.rag.embedding_model = embedding_model;
+        }
+
+        let registry = Arc::new(self.registry);
+        let provider: Arc<dyn Provider> = Arc::new(
+            MistralRsProvider::new(&config, Arc::clone(&registry)).await?
+        );
+        let rag = Rag::new(&config, provider.clone()).await?;
+
+        Ok(ChatManager {
+            config,
+            provider,
+            registry,
+            rag,
+        })
     }
 }

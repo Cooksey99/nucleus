@@ -22,7 +22,7 @@ pub mod rag;
 pub mod server;
 
 // Public exports
-pub use chat::ChatManager;
+pub use chat::{ChatManager, ChatManagerBuilder};
 pub use config::{Config, IndexerConfig};
 pub use detection::{check_ollama_silent, detect_ollama, DetectionError, OllamaInfo};
 pub use rag::Rag;
