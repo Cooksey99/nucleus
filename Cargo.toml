@@ -32,6 +32,7 @@ nucleus-plugin.workspace = true
 nucleus-std = { workspace = true, optional = true }
 nucleus-dev = { workspace = true, optional = true }
 async-trait.workspace = true
+dirs = "6.0.0"
 
 [features]
 default = ["std"]

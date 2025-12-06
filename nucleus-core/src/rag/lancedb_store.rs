@@ -65,7 +65,7 @@ impl VectorStore for LanceDbStore {
             .add(reader)
             .execute()
             .await
-            .context("Failed to add document to LanceDB")?;
+            .map_err(|e| anyhow::anyhow!("Failed to add document to LanceDB: {:?}", e))?;
 
         Ok(())
     }
