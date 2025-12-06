@@ -1,6 +1,6 @@
 use super::types::{Request, RequestType, StreamChunk};
 use crate::{config::Config, provider::Provider, rag};
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use tokio::sync::mpsc;
 
 pub type ChunkSender = mpsc::UnboundedSender<StreamChunk>;
@@ -74,7 +74,9 @@ impl RequestHandler {
     }
     
     async fn handle_index(&self, request: Request, sender: ChunkSender) {
-        match self.rag_manager.index_directory(&request.content).await {
+        let dir = request.pwd.clone().expect("Invalid directory");
+        let path_dir = Path::new(&dir);
+        match self.rag_manager.index_directory(&path_dir).await {
             Ok(count) => {
                 let _ = sender.send(StreamChunk::done(format!(
                     "Indexed {} files from: {}",

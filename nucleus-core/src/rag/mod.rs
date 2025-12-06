@@ -54,6 +54,7 @@ use crate::provider::Provider;
 use embedder::Embedder;
 use indexer::{chunk_text, collect_files};
 use store::{create_vector_store, VectorStore};
+use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -116,7 +117,7 @@ impl Rag {
         let embedder = Embedder::new(provider, &config.rag.embedding_model);
         let store = create_vector_store(
             config.storage.clone(),
-            384,
+            768,
         ).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         
         Ok(Self {
@@ -154,6 +155,27 @@ impl Rag {
         Ok(())
     }
     
+    /// Helper to process a batch of chunks and their metadata.
+    async fn process_batch(
+        &self,
+        chunk_batch: &mut Vec<String>,
+        chunk_metadata: &mut Vec<(String, String, String, usize)>,
+    ) -> Result<()> {
+        let chunk_refs: Vec<&str> = chunk_batch.iter().map(|s| s.as_str()).collect();
+        let embeddings = self.embedder.embed_batch(&chunk_refs).await?;
+        
+        for (embedding, (id, content, source, chunk_idx)) in embeddings.into_iter().zip(chunk_metadata.drain(..)) {
+            let document = Document::new(id, content, embedding)
+                .with_metadata("source", source)
+                .with_metadata("chunk", chunk_idx.to_string());
+            
+            self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+        }
+        
+        chunk_batch.clear();
+        Ok(())
+    }
+    
     /// Recursively indexes all code files in a directory.
     ///
     /// Walks the directory tree, collecting indexable files (see [`indexer`] for
@@ -178,9 +200,13 @@ impl Rag {
     /// - The directory doesn't exist or isn't accessible
     /// - Embedding generation fails for any chunk
     ///
-    pub async fn index_directory(&self, dir_path: &str) -> Result<usize> {
+    pub async fn index_directory(&self, dir_path: &Path) -> Result<usize> {
         let files = collect_files(dir_path, &self.indexer_config).await?;
         let mut indexed_count = 0;
+        
+        const BATCH_SIZE: usize = 32;
+        let mut chunk_batch = Vec::new();
+        let mut chunk_metadata = Vec::new();
         
         for file in files {
             if file.content.is_empty() {
@@ -196,18 +222,27 @@ impl Rag {
             }
             
             for (i, chunk) in chunks.into_iter().enumerate() {
-                let embedding = self.embedder.embed(&chunk).await?;
+                chunk_batch.push(chunk.clone());
+                chunk_metadata.push((
+                    format!("{}_chunk_{}", file.path.display(), i),
+                    chunk,
+                    file.path.to_string_lossy().to_string(),
+                    i,
+                ));
                 
-                let id = format!("{}_chunk_{}", file.path.display(), i);
-                let document = Document::new(id, chunk, embedding)
-                    .with_metadata("source", file.path.to_string_lossy())
-                    .with_metadata("chunk", i.to_string());
-                
-                self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+                // Process batch when it reaches BATCH_SIZE
+                if chunk_batch.len() >= BATCH_SIZE {
+                    self.process_batch(&mut chunk_batch, &mut chunk_metadata).await?;
+                }
             }
             
             indexed_count += 1;
             println!("✓ Indexed: {}", file.path.display());
+        }
+        
+        // Process remaining chunks
+        if !chunk_batch.is_empty() {
+            self.process_batch(&mut chunk_batch, &mut chunk_metadata).await?;
         }
         
         Ok(indexed_count)
@@ -246,11 +281,12 @@ impl Rag {
         
         for dir_path in dir_paths {
             println!("\nIndexing directory: {}", dir_path);
+            let dir_path = Path::new(dir_path);
             let count = self.index_directory(dir_path).await?;
             total_count += count;
         }
         
-        println!("\n✓ Total files indexed: {}", total_count);
+        println!("\nTotal files indexed: {}", total_count);
         Ok(total_count)
     }
     
@@ -408,9 +444,9 @@ impl Rag {
             .map_err(|e| RagError::Retrieval(e.to_string()))?;
         
         if removed > 0 {
-            println!("✓ Removed {} document chunks from: {}", removed, source_path);
+            println!("Removed {} document chunks from: {}", removed, source_path);
         } else {
-            println!("⚠ No documents found for: {}", source_path);
+            println!("No documents found for: {}", source_path);
         }
         
         Ok(removed)

@@ -78,4 +78,27 @@ impl Embedder {
             .await
             .map_err(EmbedderError::Provider)
     }
+    
+    /// Generates embeddings for multiple texts in batch.
+    ///
+    /// This is more efficient than calling `embed()` repeatedly, as it can
+    /// process multiple texts in a single request or pipeline them efficiently.
+    ///
+    /// # Arguments
+    ///
+    /// * `texts` - A slice of texts to embed
+    ///
+    /// # Returns
+    ///
+    /// A vector of embeddings, one for each input text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any embedding generation fails.
+    pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        self.provider
+            .embed_batch(texts, &self.model)
+            .await
+            .map_err(EmbedderError::Provider)
+    }
 }

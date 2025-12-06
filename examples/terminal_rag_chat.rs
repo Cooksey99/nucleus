@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use nucleus::{ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 
@@ -21,7 +23,29 @@ async fn main() {
 
     println!("Starting with {} docs\n\n", doc_count);
 
-    manager.index_directory("./../").await.unwrap();
+    let home = format!(
+        "{}/.cache/huggingface/token",
+        dirs::home_dir()
+            .ok_or("Home directory missing").unwrap()
+            .display()
+    );
+
+    let token = std::fs::read_to_string(home).ok();
+
+    println!("HOME: {}", token.unwrap());
+
+    let path = dirs::home_dir()
+        .ok_or("Home directory missing").unwrap()
+        .join("development/nucleus");
+    println!("Path: {}", path.display());
+    
+    match manager.index_directory(&path).await {
+        Ok(_) => {},
+        Err(e) => {
+            eprintln!("Error indexing directory: {:?}", e);
+            std::process::exit(1);
+        }
+    }
     
     println!("Added {} docs\n\n", manager.knowledge_base_count().await - doc_count);
 

@@ -39,6 +39,16 @@ pub trait Provider: Send + Sync {
     
     /// Generate an embedding vector for the given text.
     async fn embed(&self, text: &str, model: &str) -> Result<Vec<f32>>;
+    
+    /// Generate embeddings for multiple texts in batch.
+    /// Default implementation calls embed() sequentially.
+    async fn embed_batch(&self, texts: &[&str], model: &str) -> Result<Vec<Vec<f32>>> {
+        let mut embeddings = Vec::with_capacity(texts.len());
+        for text in texts {
+            embeddings.push(self.embed(text, model).await?);
+        }
+        Ok(embeddings)
+    }
 }
 
 /// Request for chat completion.

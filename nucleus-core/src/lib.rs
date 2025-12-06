@@ -14,6 +14,7 @@
 pub mod chat;
 pub mod config;
 pub mod detection;
+pub mod model_downloader;
 pub mod patterns;
 pub mod provider;
 pub mod qdrant_helper;

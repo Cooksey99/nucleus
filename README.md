@@ -49,13 +49,28 @@ The AI will:
 2. Use the `ReadFilePlugin` to get the content
 3. Analyze and respond with the answer
 
-## Building
+## Installation
+
+### 1. Install Embedding Model
+
+Nucleus requires an embedding model for RAG (semantic search). Install the default model:
+
+```bash
+./install_models.sh
+```
+
+This downloads the `nomic-embed-text-v1.5` model (~483MB) from GitHub releases to `~/.cache/nucleus/models/`.
+
+The model is Apache 2.0 licensed and works offline after installation.
+
+### 2. Build Nucleus
 
 ```bash
 cargo build --release
 ```
 
-Run examples:
+### 3. Run Examples
+
 ```bash
 cargo run --example read_file_line
 cargo run --example write_file

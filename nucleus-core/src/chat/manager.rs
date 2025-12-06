@@ -32,6 +32,7 @@ use crate::provider::{ChatRequest, ChatResponse, Message, MistralRsProvider, Pro
 use crate::rag::Rag;
 use nucleus_plugin::PluginRegistry;
 use anyhow::{Context, Result};
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -212,7 +213,7 @@ impl ChatManager {
     /// # Errors
     ///
     /// Returns an error if indexing fails.
-    pub async fn index_directory(&self, dir_path: &str) -> Result<usize> {
+    pub async fn index_directory(&self, dir_path: &Path) -> Result<usize> {
         self.rag.index_directory(dir_path).await
             .context("Failed to index directory")
     }

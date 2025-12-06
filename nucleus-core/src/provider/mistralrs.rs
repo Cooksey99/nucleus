@@ -85,7 +85,7 @@ impl MistralRsProvider {
 
         // Detect model type
         let is_local_gguf = model_name.ends_with(".gguf") && Path::new(&model_name).exists();
-        let is_hf_gguf = model_name.contains(':') && model_name.ends_with(".gguf");
+        let is_hf_gguf = !is_local_gguf;
         
         let model = if is_hf_gguf {
             // Format: "Repo/Model-GGUF:filename.gguf"
@@ -355,41 +355,20 @@ impl Provider for MistralRsProvider {
         // Lazy load embedding model on first use
         let embedding_model = self.embedding_model
             .get_or_try_init(|| async {
-                let model_name = &self.config.rag.embedding_model;
-                info!("Loading embedding model: {}", model_name);
+                let model_path = &self.config.rag.embedding_model;
+                info!("Loading embedding model from: {}", model_path);
                 
-                let model = EmbeddingModelBuilder::new(model_name)
+                let model = EmbeddingModelBuilder::new(model_path)
                     .with_logging()
                     .with_throughput_logging()
+                    .with_token_source(mistralrs::TokenSource::None)
                     .build()
                     .await
                     .map_err(|e| {
-                        let error_msg = format!("{:?}", e);
-                        
-                        // Check if this is an authentication error
-                        if error_msg.contains("401") || error_msg.contains("Unauthorized") {
-                            ProviderError::Other(format!(
-                                "Failed to load embedding model '{}': Authentication required.\n\n\
-                                This model requires HuggingFace authentication. Choose one option:\n\n\
-                                Option 1 - Set environment variable:\n\
-                                  export HF_TOKEN=\"your_token_here\"\n\
-                                  Get your token at: https://huggingface.co/settings/tokens\n\n\
-                                Option 2 - Create token file:\n\
-                                  mkdir -p ~/.cache/huggingface\n\
-                                  echo \"your_token\" > ~/.cache/huggingface/token\n\n\
-                                Option 3 - Use huggingface-cli (requires Python):\n\
-                                  pip install huggingface-hub\n\
-                                  huggingface-cli login\n\n\
-                                After authenticating, accept the model license at:\n\
-                                  https://huggingface.co/{}\n\n\
-                                Alternatively, update 'embedding_model' in config.yaml to use a non-gated model.",
-                                model_name, model_name
-                            ))
-                        } else {
-                            ProviderError::Other(
-                                format!("Failed to load embedding model '{}': {:?}", model_name, e)
-                            )
-                        }
+                        ProviderError::Other(
+                            format!("Failed to load embedding model from '{}': {:?}\n\n\
+                                Make sure the model exists at that path.", model_path, e)
+                        )
                     })?;
                 
                 Ok::<Arc<Model>, ProviderError>(Arc::new(model))

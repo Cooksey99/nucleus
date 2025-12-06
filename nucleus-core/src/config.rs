@@ -126,7 +126,8 @@ impl Default for StorageMode {
 impl Default for RagConfig {
     fn default() -> Self {
         Self {
-            embedding_model: "google/embeddinggemma-300m".to_string(),
+            // embedding_model: "models/Qwen3-Embedding-0.6B".to_string(),
+            embedding_model: "Qwen/Qwen3-Embedding-0.6B".to_string(),
             chunk_size: 512,
             chunk_overlap: 50,
             indexer: IndexerConfig::default(),
@@ -273,7 +274,7 @@ mod tests {
     #[test]
     fn test_rag_config_defaults() {
         let config = RagConfig::default();
-        assert_eq!(config.embedding_model, "Qwen/Qwen3-Embedding-0.6B");
+        assert_eq!(config.embedding_model, "models/Qwen3-Embedding-0.6B");
         assert_eq!(config.chunk_size, 512);
         assert_eq!(config.chunk_overlap, 50);
     }

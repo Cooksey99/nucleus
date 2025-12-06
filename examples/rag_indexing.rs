@@ -17,8 +17,8 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load_or_default();
     print_rag_config(&config);
     
-    let registry = Arc::new(PluginRegistry::new(Permission::READ_WRITE));
-    let manager = ChatManager::new(config.clone(), registry).await?;
+    let registry = PluginRegistry::new(Permission::READ_WRITE);
+    let manager = ChatManager::new(config.clone(), registry).await;
     
     let doc_count = manager.knowledge_base_count().await;
     println!("Current knowledge base: {} documents\n", doc_count);
@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
 
 fn print_rag_config(config: &Config) {
     println!("RAG Configuration:");
-    match &config.rag.storage_mode {
+    match &config.storage.storage_mode {
         nucleus_core::config::StorageMode::Embedded { path } => {
             println!("  Storage: Embedded at {}", path);
         }
@@ -44,7 +44,7 @@ fn print_rag_config(config: &Config) {
             println!("  Storage: Remote gRPC @ {}", url);
         }
     }
-    println!("  Collection: {}", config.rag.vector_db.collection_name);
+    println!("  Collection: {}", config.storage.vector_db.collection_name);
     println!("  Embedding: {}", config.rag.embedding_model);
     println!("  Chunking: {} bytes (overlap: {})", config.rag.chunk_size, config.rag.chunk_overlap);
     println!();
@@ -80,12 +80,12 @@ async fn query_example(manager: &ChatManager) -> anyhow::Result<()> {
 
 fn print_summary(config: &Config, doc_count: usize) {
     println!("=== Summary ===");
-    match &config.rag.storage_mode {
+    match &config.storage.storage_mode {
         nucleus_core::config::StorageMode::Embedded { path } => {
-            println!("Collection '{}' at {}", config.rag.vector_db.collection_name, path);
+            println!("Collection '{}' at {}", config.storage.vector_db.collection_name, path);
         }
         nucleus_core::config::StorageMode::Grpc { url } => {
-            println!("Collection '{}' @ {}", config.rag.vector_db.collection_name, url);
+            println!("Collection '{}' @ {}", config.storage.vector_db.collection_name, url);
         }
     }
     println!("{} documents indexed", doc_count);
