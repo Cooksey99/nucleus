@@ -132,9 +132,6 @@ impl MistralRsProvider {
                 .with_logging()
                 .with_throughput_logging();
 
-            // NOTE: Not registering tool callbacks - nucleus handles tool execution
-            // via the streaming response tool_calls field instead
-
             builder.build()
                 .await
                 .map_err(|e| ProviderError::Other(
@@ -146,9 +143,6 @@ impl MistralRsProvider {
                 .with_isq(IsqType::Q4K) // 4-bit quantization
                 .with_logging()
                 .with_throughput_logging();
-
-            // NOTE: Not registering tool callbacks - nucleus handles tool execution
-            // via the streaming response tool_calls field instead
             
             builder = builder.with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
                 .context("Unable to build with paged attention")
@@ -167,28 +161,6 @@ impl MistralRsProvider {
     }
 
 }
-
-/// Convert the nucleus plugin structure to the mistralrs tool structure
-fn plugin_to_callback(plugin: &Arc<dyn Plugin>) -> Arc<ToolCallback> {
-    let plugin = Arc::clone(plugin);
-
-    Arc::new(move |called_fn: &CalledFunction| {
-        // Get arguments from the called function
-        let args: serde_json::Value = serde_json::from_str(&called_fn.arguments)
-            .map_err(|e| ProviderError::Other(format!("Failed to parse tool arguments: {}", e)))?;
-
-        let handle = tokio::runtime::Handle::try_current()
-            .map_err(|e| ProviderError::Other(format!("No tokio runtime available: {}", e)))?;
-
-        let result = handle.block_on(async {
-            plugin.execute(args).await
-        })
-        .map_err(|e| ProviderError::Other(format!("Plugin execution failed: {}", e)))?;
-
-        Ok(result.content)
-    })
-}
-
 
 #[async_trait]
 impl Provider for MistralRsProvider {
@@ -216,6 +188,7 @@ impl Provider for MistralRsProvider {
         let mut builder = RequestBuilder::from(messages);
 
         // Convert plugins to mistral.rs tool definitions
+        // Tool calls are returned in the response for nucleus to execute
         if self.registry.get_count() > 0 {
             let plugins = self.registry.all();
             info!(plugin_count = plugins.len(), "Converting plugins to mistral.rs tools");
@@ -263,12 +236,10 @@ impl Provider for MistralRsProvider {
                 .collect();
             
             info!(tool_count = mistral_tools.len(), "Setting tools with ToolChoice::Auto");
-            debug!(tools = ?mistral_tools, "Final tool definitions being sent to model");
             builder = builder.set_tools(mistral_tools).set_tool_choice(ToolChoice::Auto);
         }
 
-        // Stream request with timeout to prevent hangs
-        debug!("Starting streaming chat request to mistral.rs");
+        // Stream request
         let timeout_duration = std::time::Duration::from_secs(60);
         let mut stream = tokio::time::timeout(
             timeout_duration,
@@ -283,7 +254,6 @@ impl Provider for MistralRsProvider {
         })?
         .map_err(|e| ProviderError::Other(format!("Failed to create stream: {:?}", e)))?;
         
-        debug!("Streaming response from mistral.rs");
         let mut accumulated_content = String::new();
         let mut final_tool_calls = None;
         let mut message_role = String::from("assistant"); // Default, will be updated from stream
@@ -342,12 +312,9 @@ impl Provider for MistralRsProvider {
                     }
                 }
                 Response::Done(_) => {
-                    debug!("Stream complete");
                     break;
                 }
-                _ => {
-                    debug!("Received other response type in stream");
-                }
+                _ => {}
             }
         }
 
