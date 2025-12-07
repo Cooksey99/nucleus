@@ -30,34 +30,12 @@ pub struct LanceDbStore {
 
 #[async_trait]
 impl VectorStore for LanceDbStore {
-    async fn add(&self, document: Document) -> Result<()> {
-        let schema = Self::create_schema(self.vector_size);
+    async fn add(&self, documents: Vec<Document>) -> Result<()> {
+        if documents.is_empty() {
+            return Ok(());
+        }
 
-        let id_array = StringArray::from(vec![document.id.as_str()]);
-        let content_array = StringArray::from(vec![document.content.as_str()]);
-        
-        let vector_values = Float32Array::from(document.embedding);
-        let vector_array = FixedSizeListArray::new(
-            Arc::new(Field::new("item", DataType::Float32, true)),
-            self.vector_size as i32,
-            Arc::new(vector_values),
-            None,
-        );
-        
-        let source_value = document.metadata.get("source").map(|s| s.as_str());
-        let source_array = StringArray::from(vec![source_value]);
-
-        let batch = RecordBatch::try_new(
-            schema,
-            vec![
-                Arc::new(id_array) as ArrayRef,
-                Arc::new(content_array) as ArrayRef,
-                Arc::new(vector_array) as ArrayRef,
-                Arc::new(source_array) as ArrayRef,
-            ],
-        )
-        .context("Failed to create record batch")?;
-
+        let batch = self.create_record_batch(&documents)?;
         let schema_ref = batch.schema();
         let reader = RecordBatchIterator::new(vec![Ok(batch)], schema_ref);
         
@@ -65,7 +43,7 @@ impl VectorStore for LanceDbStore {
             .add(reader)
             .execute()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to add document to LanceDB: {:?}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to add documents to LanceDB: {:?}", e))?;
 
         Ok(())
     }
@@ -266,6 +244,55 @@ impl LanceDbStore {
             ),
             Field::new("source", DataType::Utf8, true),
         ]))
+    }
+
+    fn create_record_batch(&self, documents: &[Document]) -> Result<RecordBatch> {
+        let schema = Self::create_schema(self.vector_size);
+
+        // Validate all embeddings have the correct size
+        for doc in documents.iter() {
+            if doc.embedding.len() != self.vector_size as usize {
+                return Err(anyhow::anyhow!(
+                    "Document {} has embedding size {} but expected {}",
+                    doc.id,
+                    doc.embedding.len(),
+                    self.vector_size
+                ));
+            }
+        }
+
+        let ids: Vec<&str> = documents.iter().map(|doc| doc.id.as_str()).collect();
+        let contents: Vec<&str> = documents.iter().map(|doc| doc.content.as_str()).collect();
+        let sources: Vec<Option<&str>> = documents.iter()
+            .map(|doc| doc.metadata.get("source").map(|s| s.as_str()))
+            .collect();
+
+        let all_vector_values: Vec<f32> = documents.iter()
+            .flat_map(|doc| doc.embedding.iter().copied())
+            .collect();
+
+        let id_array = StringArray::from(ids);
+        let content_array = StringArray::from(contents);
+        let source_array = StringArray::from(sources);
+
+        let vector_values = Float32Array::from(all_vector_values);
+        let vector_array = FixedSizeListArray::new(
+            Arc::new(Field::new("item", DataType::Float32, true)),
+            self.vector_size as i32,
+            Arc::new(vector_values),
+            None,
+        );
+
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(id_array) as ArrayRef,
+                Arc::new(content_array) as ArrayRef,
+                Arc::new(vector_array) as ArrayRef,
+                Arc::new(source_array) as ArrayRef,
+            ],
+        )
+        .context("Failed to create record batch")
     }
 
     /// Creates a new LanceDB store and ensures the table exists.

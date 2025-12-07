@@ -46,6 +46,7 @@ mod store;
 mod types;
 pub mod utils;
 
+use anyhow::Context;
 #[allow(unused)]
 pub use types::{Document, SearchResult};
 
@@ -115,9 +116,10 @@ impl Rag {
     /// ```
     pub async fn new(config: &Config, provider: Arc<dyn Provider>) -> Result<Self> {
         let embedder = Embedder::new(provider, &config.rag.embedding_model);
+                
         let store = create_vector_store(
             config.storage.clone(),
-            768,
+            config.rag.chunk_size.try_into().unwrap_or_default(),
         ).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         
         Ok(Self {
@@ -151,11 +153,10 @@ impl Rag {
         let document = Document::new(id, content, embedding)
             .with_metadata("source", source);
         
-        self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+        self.store.add(vec![document]).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         Ok(())
     }
     
-    /// Helper to process a batch of chunks and their metadata.
     async fn process_batch(
         &self,
         chunk_batch: &mut Vec<String>,
@@ -170,13 +171,16 @@ impl Rag {
         let embeddings = self.embedder.embed_batch(&chunk_refs).await?;
         info!("Received {} embeddings", embeddings.len());
         
-        for (embedding, (id, content, source, chunk_idx)) in embeddings.into_iter().zip(chunk_metadata.drain(..)) {
-            let document = Document::new(id, content, embedding)
-                .with_metadata("source", source)
-                .with_metadata("chunk", chunk_idx.to_string());
-            
-            self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
-        }
+        let documents: Vec<Document> = embeddings.into_iter()
+            .zip(chunk_metadata.drain(..))
+            .map(|(embedding, (id, content, source, chunk_idx))| {
+                Document::new(id, content, embedding)
+                    .with_metadata("source", source)
+                    .with_metadata("chunk", chunk_idx.to_string())
+            })
+            .collect();
+        
+        self.store.add(documents).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         
         info!("Batch processed successfully");
         chunk_batch.clear();
@@ -340,7 +344,7 @@ impl Rag {
                 .with_metadata("source", file_path)
                 .with_metadata("chunk", i.to_string());
             
-            self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+            self.store.add(vec![document]).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         }
         
         println!("✓ Indexed: {} ({} chunks)", file_path, chunk_count);

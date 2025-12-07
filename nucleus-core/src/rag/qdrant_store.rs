@@ -45,37 +45,33 @@ pub struct QdrantStore {
 
 #[async_trait]
 impl VectorStore for QdrantStore {
-    /// Adds or updates a document in the store.
-    ///
-    /// If a document with the same ID already exists, it will be replaced.
-    /// This provides automatic deduplication when re-indexing.
-    async fn add(&self, document: Document) -> Result<()> {
-        // Store original ID in metadata and use hash as point ID
-        // Qdrant requires IDs to be either UUIDs or numbers
-        let mut hasher = DefaultHasher::new();
-        document.id.hash(&mut hasher);
-        let numeric_id = hasher.finish();
-        
-        let payload: HashMap<String, serde_json::Value> = document
-            .metadata
-            .iter()
-            .map(|(k, v)| (k.clone(), json!(v)))
-            .chain(vec![
-                ("content".to_string(), json!(document.content)),
-                ("id".to_string(), json!(document.id)),
-            ])
-            .collect();
+    async fn add(&self, documents: Vec<Document>) -> Result<()> {
+        if documents.is_empty() {
+            return Ok(());
+        }
 
-        let point = PointStruct::new(
-            numeric_id,
-            document.embedding.clone(),
-            payload,
-        );
+        let points: Vec<PointStruct> = documents.into_iter().map(|document| {
+            let mut hasher = DefaultHasher::new();
+            document.id.hash(&mut hasher);
+            let numeric_id = hasher.finish();
+            
+            let payload: HashMap<String, serde_json::Value> = document
+                .metadata
+                .iter()
+                .map(|(k, v)| (k.clone(), json!(v)))
+                .chain(vec![
+                    ("content".to_string(), json!(document.content)),
+                    ("id".to_string(), json!(document.id)),
+                ])
+                .collect();
+
+            PointStruct::new(numeric_id, document.embedding, payload)
+        }).collect();
 
         self.client
-            .upsert_points(UpsertPointsBuilder::new(&self.collection_name, vec![point]))
+            .upsert_points(UpsertPointsBuilder::new(&self.collection_name, points))
             .await
-            .context("Failed to upsert point")?;
+            .context("Failed to upsert points")?;
 
         Ok(())
     }
@@ -374,7 +370,7 @@ mod tests {
             .unwrap();
 
         let doc = Document::new("test_1", "Hello world", vec![1.0, 0.0, 0.0]);
-        store.add(doc).await.unwrap();
+        store.add(vec![doc]).await.unwrap();
 
         let count = store.count().await.unwrap();
         assert_eq!(count, 1);

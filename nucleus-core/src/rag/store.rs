@@ -16,9 +16,8 @@ use std::sync::Arc;
 /// across different vector database backends (LanceDB for embedded, Qdrant for gRPC).
 #[async_trait]
 pub trait VectorStore: Send + Sync {
-    /// Adds or updates a document in the store.
-    async fn add(&self, document: Document) -> Result<()>;
-
+    /// Adds or updates multiple documents in the store.
+    async fn add(&self, documents: Vec<Document>) -> Result<()>;
     /// Searches for the most similar documents using vector similarity.
     ///
     /// # Arguments
