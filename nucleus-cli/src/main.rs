@@ -35,7 +35,9 @@ enum ModelCommands {
 
     #[command(about = "Set the LLM model")]
     Set {
-        #[arg(help = "Model name (e.g., 'llama3.2:latest' or 'hf.co/Qwen/Qwen3-30B-A3B-GGUF:Q4_K_M')")]
+        #[arg(
+            help = "Model name (e.g., 'llama3.2:latest' or 'hf.co/Qwen/Qwen3-30B-A3B-GGUF:Q4_K_M')"
+        )]
         model: String,
     },
 
@@ -60,8 +62,7 @@ fn main() -> Result<()> {
 }
 
 fn show_config(config_path: &PathBuf) -> Result<()> {
-    let config = Config::load(config_path)
-        .context("Failed to load config")?;
+    let config = Config::load(config_path).context("Failed to load config")?;
 
     println!("{}", "Current Configuration:".bold().green());
     println!();
@@ -74,29 +75,27 @@ fn show_config(config_path: &PathBuf) -> Result<()> {
     println!("{}", "RAG:".bold());
     println!("  Embedding Model: {}", config.rag.embedding_model.cyan());
     println!("  Chunk Size:      {}", config.rag.chunk_size);
-    println!("  Top K:           {}", config.rag.top_k);
+    println!("  Top K:           {}", config.storage.top_k);
     println!();
     println!("{}", "Storage:".bold());
-    println!("  Vector DB:       {}", config.storage.vector_db_path);
+    // println!("  Vector DB:       {}", config.storage.vector_db);
     println!("  Chat History:    {}", config.storage.chat_history_path);
 
     Ok(())
 }
 
 fn show_model(config_path: &PathBuf) -> Result<()> {
-    let config = Config::load(config_path)
-        .context("Failed to load config")?;
+    let config = Config::load(config_path).context("Failed to load config")?;
 
     println!("{}: {}", "Current model".bold(), config.llm.model.cyan());
     Ok(())
 }
 
 fn set_model(config_path: &PathBuf, model: &str) -> Result<()> {
-    let content = std::fs::read_to_string(config_path)
-        .context("Failed to read config file")?;
+    let content = std::fs::read_to_string(config_path).context("Failed to read config file")?;
 
-    let mut config: serde_yaml::Value = serde_yaml::from_str(&content)
-        .context("Failed to parse config")?;
+    let mut config: serde_yaml::Value =
+        serde_yaml::from_str(&content).context("Failed to parse config")?;
 
     if let Some(llm) = config.get_mut("llm") {
         if let Some(llm_map) = llm.as_mapping_mut() {
@@ -107,17 +106,11 @@ fn set_model(config_path: &PathBuf, model: &str) -> Result<()> {
         }
     }
 
-    let updated_content = serde_yaml::to_string(&config)
-        .context("Failed to serialize config")?;
+    let updated_content = serde_yaml::to_string(&config).context("Failed to serialize config")?;
 
-    std::fs::write(config_path, updated_content)
-        .context("Failed to write config file")?;
+    std::fs::write(config_path, updated_content).context("Failed to write config file")?;
 
-    println!(
-        "{} Model updated to: {}",
-        "✓".green().bold(),
-        model.cyan()
-    );
+    println!("{} Model updated to: {}", "✓".green().bold(), model.cyan());
 
     Ok(())
 }
@@ -154,12 +147,13 @@ fn list_models(base_url: &str) -> Result<()> {
         anyhow::bail!("Ollama returned error: {}", response.status());
     }
 
-    let data: OllamaResponse = response
-        .json()
-        .context("Failed to parse Ollama response")?;
+    let data: OllamaResponse = response.json().context("Failed to parse Ollama response")?;
 
     if data.models.is_empty() {
-        println!("{}", "No models found. Pull a model with 'ollama pull <model>'".yellow());
+        println!(
+            "{}",
+            "No models found. Pull a model with 'ollama pull <model>'".yellow()
+        );
         return Ok(());
     }
 
@@ -168,16 +162,14 @@ fn list_models(base_url: &str) -> Result<()> {
 
     for model in data.models {
         let size_gb = model.size as f64 / (1024.0 * 1024.0 * 1024.0);
-        println!(
-            "  {} {} ({:.2} GB)",
-            "•".cyan(),
-            model.name.bold(),
-            size_gb
-        );
+        println!("  {} {} ({:.2} GB)", "•".cyan(), model.name.bold(), size_gb);
     }
 
     println!();
-    println!("Use {} to set a model", "nucleus -c config.yaml model set <model>".bold());
+    println!(
+        "Use {} to set a model",
+        "nucleus -c config.yaml model set <model>".bold()
+    );
 
     Ok(())
 }

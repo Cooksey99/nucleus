@@ -1,4 +1,4 @@
-use nucleus_core::models::{ModelRegistry, Model};
+use nucleus_core::models::{Model, ModelRegistry};
 
 fn main() {
     let registry = ModelRegistry::new();
@@ -14,15 +14,8 @@ fn main() {
             }
             Model::Embedding(embed) => {
                 println!(
-                    "Embedding: {} - {} dims, {} tokens{}",
-                    embed.name,
-                    embed.embedding_dim,
-                    embed.context_length,
-                    if embed.supports_custom_dimensions {
-                        " (MRL)"
-                    } else {
-                        ""
-                    }
+                    "Embedding: {} - {} dims, {} tokens",
+                    embed.name, embed.embedding_dim, embed.context_length,
                 );
             }
         }

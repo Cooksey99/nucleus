@@ -132,6 +132,7 @@ impl Default for StorageMode {
 }
 
 impl Default for RagConfig {
+    // let model =
     fn default() -> Self {
         Self {
             // embedding_model: "models/Qwen3-Embedding-0.6B".to_string(),
