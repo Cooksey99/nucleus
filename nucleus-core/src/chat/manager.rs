@@ -29,7 +29,7 @@
 
 use crate::config::Config;
 use crate::models::EmbeddingModel;
-use crate::provider::{ChatRequest, ChatResponse, Message, MistralRsProvider, Provider, Tool, ToolCall, ToolFunction};
+use crate::provider::{ChatRequest, ChatResponse, Message, Provider, Tool, ToolCall, ToolFunction, create_provider};
 use crate::rag::RagEngine;
 use nucleus_plugin::PluginRegistry;
 use anyhow::{Context, Result};
@@ -638,9 +638,7 @@ impl ChatManagerBuilder {
         }
 
         let registry = Arc::new(self.registry);
-        let provider: Arc<dyn Provider> = Arc::new(
-            MistralRsProvider::new(&config, Arc::clone(&registry)).await?
-        );
+        let provider = create_provider(&config, Arc::clone(&registry)).await?;
         let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
 
         Ok(ChatManager {

@@ -7,6 +7,7 @@ pub mod mistralrs;
 pub mod ollama;
 mod types;
 mod utils;
+mod factory;
 
 #[cfg(feature = "coreml")]
 pub mod coreml;
@@ -20,6 +21,7 @@ pub use types::{
 // Re-export provider implementations
 pub use mistralrs::MistralRsProvider;
 pub use ollama::OllamaProvider;
+pub use factory::create_provider;
 
 #[cfg(feature = "coreml")]
 pub use coreml::CoreMLProvider;
