@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use nucleus::{ChatManager, Config};
+use nucleus::{provider::CoreMLProvider, ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 
 #[tokio::main]
@@ -14,7 +14,9 @@ async fn main() {
 
     let config = Config::load_or_default();
     let registry = PluginRegistry::new(Permission::NONE);
-    let manager = ChatManager::new(config, registry)
+    let manager = ChatManager::builder(config, registry)
+        .with_provider(Arc::new(CoreMLProvider))
+        .build()
         .await
         .expect("Failed to create chat manager");
 

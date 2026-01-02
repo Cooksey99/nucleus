@@ -3,13 +3,13 @@
 //! This module defines a common interface for different LLM backends
 //! (Ollama, mistral.rs, etc.) to provide chat completions and embeddings.
 
+mod factory;
 pub mod mistralrs;
 pub mod ollama;
 mod types;
 mod utils;
-mod factory;
 
-#[cfg(feature = "coreml")]
+#[cfg(any(target_os = "macos", feature = "coreml"))]
 pub mod coreml;
 
 // Re-export common types
@@ -19,9 +19,9 @@ pub use types::{
 };
 
 // Re-export provider implementations
+pub use factory::create_provider;
 pub use mistralrs::MistralRsProvider;
 pub use ollama::OllamaProvider;
-pub use factory::create_provider;
 
-#[cfg(feature = "coreml")]
+#[cfg(any(target_os = "macos", feature = "coreml"))]
 pub use coreml::CoreMLProvider;
