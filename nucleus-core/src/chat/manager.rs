@@ -531,6 +531,7 @@ pub struct ChatManagerBuilder {
     registry: PluginRegistry,
     llm_model_override: Option<String>,
     embedding_model_override: Option<EmbeddingModel>,
+    provider_override: Option<Arc<dyn Provider>>,
 }
 
 impl ChatManagerBuilder {
@@ -541,6 +542,7 @@ impl ChatManagerBuilder {
             registry,
             llm_model_override: None,
             embedding_model_override: None,
+            provider_override: None,
         }
     }
 
@@ -617,6 +619,40 @@ impl ChatManagerBuilder {
         self
     }
 
+    /// Override the provider explicitly.
+    ///
+    /// This bypasses the provider factory and uses the provided implementation directly.
+    /// Useful when you need more control over provider initialization or want to use
+    /// a custom provider implementation.
+    ///
+    /// # Arguments
+    ///
+    /// * `provider` - A provider implementation wrapped in an Arc
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{ChatManager, Config};
+    /// # use nucleus_core::provider::MistralRsProvider;
+    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # use std::sync::Arc;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let config = Config::load_or_default();
+    /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let custom_provider = Arc::new(MistralRsProvider::new(&config, Arc::new(registry.clone())).await?);
+    /// 
+    /// let manager = ChatManager::builder(config, registry)
+    ///     .with_provider(custom_provider)
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_provider(mut self, provider: Arc<dyn Provider>) -> Self {
+        self.provider_override = Some(provider);
+        self
+    }
+
     /// Builds the `ChatManager` with the configured settings.
     ///
     /// This initializes the provider with the (possibly overridden) LLM model,
@@ -638,7 +674,11 @@ impl ChatManagerBuilder {
         }
 
         let registry = Arc::new(self.registry);
-        let provider = create_provider(&config, Arc::clone(&registry)).await?;
+        let provider = if let Some(provider) = self.provider_override {
+            provider
+        } else {
+            create_provider(&config, Arc::clone(&registry)).await?
+        };
         let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
 
         Ok(ChatManager {
