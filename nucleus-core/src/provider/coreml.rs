@@ -5,9 +5,12 @@
 
 use super::types::*;
 use crate::models::EmbeddingModel;
+use crate::Config;
 use async_trait::async_trait;
+use nucleus_plugin::PluginRegistry;
 use std::ffi::{CString, c_char, c_float, c_int, c_void};
 use std::path::Path;
+use std::sync::Arc;
 use tracing::{debug, info};
 
 #[repr(C)]
@@ -44,15 +47,28 @@ pub struct CoreMLProvider {
     model_path: String,
     input_name: String,
     output_name: String,
+    registry: Arc<PluginRegistry>,
+    config: Config,
 }
 
 impl CoreMLProvider {
-    pub fn new<P: AsRef<Path>>(
-        model_path: P,
-        input_name: impl Into<String>,
-        output_name: impl Into<String>,
-    ) -> Result<Self> {
-        let path = model_path.as_ref();
+    /// Creates a new CoreML provider.
+    ///
+    /// Loads the CoreML model from the configured path.
+    pub async fn new(config: &Config, registry: Arc<PluginRegistry>) -> Result<Self> {
+        info!("CoreML provider initialized with Apple Neural Engine acceleration");
+        
+        let model_path = config.llm.model.clone();
+        
+        let expanded_path = if model_path.starts_with('~') {
+            let home = std::env::var("HOME")
+                .map_err(|_| ProviderError::Other("HOME environment variable not set".to_string()))?;
+            model_path.replacen('~', &home, 1)
+        } else {
+            model_path.clone()
+        };
+        
+        let path = Path::new(&expanded_path);
         
         if !path.exists() {
             return Err(ProviderError::Other(
@@ -79,8 +95,10 @@ impl CoreMLProvider {
         Ok(Self {
             model: CoreMLModelRef(handle),
             model_path: path_str.to_string(),
-            input_name: input_name.into(),
-            output_name: output_name.into(),
+            input_name: "input".to_string(),
+            output_name: "output".to_string(),
+            registry,
+            config: config.clone(),
         })
     }
     

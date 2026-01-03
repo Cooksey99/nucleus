@@ -17,11 +17,11 @@ pub struct PluginRegistry {
 
 impl PluginRegistry {
     /// Create a new plugin registry with the given permissions.
-    pub fn new(granted_permissions: Permission) -> Self {
-        Self {
+    pub fn new(granted_permissions: Permission) -> Arc<Self> {
+        Arc::new(Self {
             plugins: HashMap::new(),
             granted_permissions,
-        }
+        })
     }
     
     /// Register a plugin if permissions allow.

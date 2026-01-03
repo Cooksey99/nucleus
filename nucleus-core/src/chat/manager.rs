@@ -109,8 +109,8 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn new(config: Config, registry: PluginRegistry) -> Result<Self> {
-        Self::builder(config, registry).build().await
+    pub async fn new(config: Config, registry: impl Into<Arc<PluginRegistry>>) -> Result<Self> {
+        Self::builder(config, registry.into()).build().await
     }
 
     /// Creates a builder for configuring the chat manager.
@@ -143,9 +143,11 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn builder(config: Config, registry: PluginRegistry) -> ChatManagerBuilder {
+    pub fn builder(config: Config, registry: impl Into<Arc<PluginRegistry>>) -> ChatManagerBuilder {
+        let registry = registry.into();
         ChatManagerBuilder::new(config, registry)
     }
+    
     
     ///
     /// # Examples
@@ -528,7 +530,7 @@ impl ChatManager {
 /// ```
 pub struct ChatManagerBuilder {
     config: Config,
-    registry: PluginRegistry,
+    registry: Arc<PluginRegistry>,
     llm_model_override: Option<String>,
     embedding_model_override: Option<EmbeddingModel>,
     provider_override: Option<Arc<dyn Provider>>,
@@ -536,7 +538,7 @@ pub struct ChatManagerBuilder {
 
 impl ChatManagerBuilder {
     /// Creates a new builder with the given config and registry.
-    pub fn new(config: Config, registry: PluginRegistry) -> Self {
+    pub fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
         Self {
             config,
             registry,
@@ -673,18 +675,17 @@ impl ChatManagerBuilder {
             config.rag.embedding_model = embedding_model;
         }
 
-        let registry = Arc::new(self.registry);
         let provider = if let Some(provider) = self.provider_override {
             provider
         } else {
-            create_provider(&config, Arc::clone(&registry)).await?
+            create_provider(&config, Arc::clone(&self.registry)).await?
         };
         let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
 
         Ok(ChatManager {
             config,
             provider,
-            registry,
+            registry: self.registry,
             rag_engine,
         })
     }

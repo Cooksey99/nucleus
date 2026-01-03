@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::{io::{self, Write}, sync::Arc};
 
 use nucleus::{provider::CoreMLProvider, ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
@@ -14,8 +14,9 @@ async fn main() {
 
     let config = Config::load_or_default();
     let registry = PluginRegistry::new(Permission::NONE);
-    let manager = ChatManager::builder(config, registry)
-        .with_provider(Arc::new(CoreMLProvider))
+    let provider = CoreMLProvider::new(&config, registry.clone()).await.unwrap();
+    let manager = ChatManager::builder(config, registry.clone())
+        .with_provider(Arc::new(provider))
         .build()
         .await
         .expect("Failed to create chat manager");
