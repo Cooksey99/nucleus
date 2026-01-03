@@ -15,7 +15,7 @@ pub mod coreml;
 // Re-export common types
 pub use types::{
     ChatRequest, ChatResponse, EmbedRequest, EmbedResponse, Message, Provider, ProviderError,
-    Result, Tool, ToolCall, ToolCallFunction, ToolFunction,
+    ProviderType, Result, Tool, ToolCall, ToolCallFunction, ToolFunction,
 };
 
 // Re-export provider implementations
