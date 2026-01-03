@@ -31,7 +31,7 @@ use crate::config::Config;
 use crate::models::EmbeddingModel;
 use crate::provider::{ChatRequest, ChatResponse, Message, Provider, Tool, ToolCall, ToolFunction, create_provider};
 use crate::rag::RagEngine;
-use nucleus_plugin::PluginRegistry;
+use nucleus_plugin::{Permission, PluginRegistry};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::sync::Arc;
@@ -110,7 +110,10 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn new(config: Config, registry: impl Into<Arc<PluginRegistry>>) -> Result<Self> {
-        Self::builder(config, registry.into()).build().await
+        Self::builder()
+            .with_config(config)
+            .with_registry(registry.into())
+            .build().await
     }
 
     /// Creates a builder for configuring the chat manager.
@@ -143,12 +146,10 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn builder(config: Config, registry: impl Into<Arc<PluginRegistry>>) -> ChatManagerBuilder {
-        let registry = registry.into();
-        ChatManagerBuilder::new(config, registry)
+    pub fn builder() -> ChatManagerBuilder {
+        ChatManagerBuilder::new()
     }
-    
-    
+
     ///
     /// # Examples
     ///
@@ -538,7 +539,9 @@ pub struct ChatManagerBuilder {
 
 impl ChatManagerBuilder {
     /// Creates a new builder with the given config and registry.
-    pub fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
+    pub fn new() -> Self {
+        let config = Config::default();
+        let registry = PluginRegistry::new(Permission::NONE);
         Self {
             config,
             registry,
@@ -548,7 +551,15 @@ impl ChatManagerBuilder {
         }
     }
 
-    /// Override the default LLM model from the configuration.
+    pub fn with_config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn with_registry(mut self, registry: impl Into<Arc<PluginRegistry>>) -> Self {
+        self.registry = registry.into();
+        self
+    }    /// Override the default LLM model from the configuration.
     ///
     /// Accepts a model identifier, which may be:
     /// - A Hugging Face repo ID: `"Qwen/Qwen3-1.6B-Instruct"`

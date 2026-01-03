@@ -37,7 +37,7 @@ pub async fn create_provider(
         "coreml" => {
             info!("Using CoreML provider with model: {}", config.llm.model);
             let provider = CoreMLProvider::new(config, registry).await?;
-            Ok(Arc::new(provider))
+            Ok(provider)
         }
         #[cfg(not(any(target_os = "macos", feature = "coreml")))]
         "coreml" => {
