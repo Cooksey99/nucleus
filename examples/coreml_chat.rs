@@ -13,7 +13,7 @@ async fn main() {
 
     let manager = ChatManager::builder()
         .with_provider(ProviderType::CoreML)
-        .with_llm_model("apple/mistral-coreml")
+        .with_llm_model("../models/Llama-3.1-8B-Instruct-CoreML/llama_3.1_coreml.mlpackage")
         .build()
         .await
         .expect("Failed to create chat manager");
