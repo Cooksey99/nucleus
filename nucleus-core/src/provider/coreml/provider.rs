@@ -43,6 +43,14 @@ extern "C" {
     ) -> c_int;
 }
 
+fn argmax(logits: &[f32]) -> u32 {
+    logits.iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(idx, _)| idx as u32)
+        .unwrap_or(0)
+}
+
 pub struct CoreMLProvider {
     model: CoreMLModelRef,
     model_path: String,
@@ -107,13 +115,16 @@ impl CoreMLProvider {
             
             Some(tok)
         } else {
-            warn!("No tokenizer.json found at {:?}, chat will fail", tokenizer_path);
+            info!("No tokenizer.json found at {:?}, using default vocab size from config", tokenizer_path);
             None
         };
         
         let vocab_size = tokenizer.as_ref()
             .map(|t| t.get_vocab_size(false))
-            .unwrap_or(config.llm.context_length);
+            .unwrap_or_else(|| {
+                debug!("Using context_length 128256 as default vocab size");
+                128256
+            });
         
         info!("CoreML model loaded: {}", path.display());
         
@@ -128,6 +139,49 @@ impl CoreMLProvider {
             _vocab_size: vocab_size,
         }))
     }
+
+    pub fn generate(&self, prompt: &str, max_tokens: usize) -> Result<String> {
+        let tokenizer = self._tokenizer.as_ref()
+            .ok_or_else(|| ProviderError::Other("Tokenizer not loaded".to_string()))?;
+        
+        let encoding = tokenizer.encode(prompt, false)
+            .map_err(|e| ProviderError::Other(format!("Tokenization failed: {}", e)))?;
+        
+        let mut input_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let mut generated_text = String::new();
+        
+        info!("Starting generation with {} input tokens, max {} new tokens", input_ids.len(), max_tokens);
+        
+        for step in 0..max_tokens {
+            let input_floats: Vec<f32> = input_ids.iter().map(|&id| id as f32).collect();
+            
+            let mut logits = vec![0.0f32; self._vocab_size];
+            
+            self.predict(&input_floats, &mut logits)?;
+            
+            let next_token_id = argmax(&logits);
+            
+            if next_token_id == 0 || next_token_id >= self._vocab_size as u32 {
+                debug!("EOS or invalid token {} at step {}", next_token_id, step);
+                break;
+            }
+            
+            input_ids.push(next_token_id);
+            
+            let token_str = tokenizer.decode(&[next_token_id], true)
+                .map_err(|e| ProviderError::Other(format!("Detokenization failed: {}", e)))?;
+            
+            generated_text.push_str(&token_str);
+            
+            if step % 10 == 0 {
+                debug!("Generated {} tokens", step + 1);
+            }
+        }
+        
+        info!("Generation complete: {} total tokens", input_ids.len());
+        Ok(generated_text)
+    }
+
     
     pub fn predict(&self, input: &[f32], output: &mut [f32]) -> Result<()> {
         let input_name = CString::new(self.input_name.as_str())
