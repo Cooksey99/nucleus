@@ -8,10 +8,11 @@ use crate::models::EmbeddingModel;
 use crate::Config;
 use async_trait::async_trait;
 use nucleus_plugin::PluginRegistry;
+use tokenizers::Tokenizer;
 use std::ffi::{CString, c_char, c_float, c_int, c_void};
 use std::path::Path;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[repr(C)]
 struct CoreMLModelRef(*mut c_void);
@@ -47,8 +48,10 @@ pub struct CoreMLProvider {
     model_path: String,
     input_name: String,
     output_name: String,
-    registry: Arc<PluginRegistry>,
-    config: Config,
+    _registry: Arc<PluginRegistry>,
+    _config: Config,
+    _tokenizer: Option<Tokenizer>,
+    _vocab_size: usize,
 }
 
 impl CoreMLProvider {
@@ -69,6 +72,7 @@ impl CoreMLProvider {
         };
         
         let path = Path::new(&expanded_path);
+        info!("Searching for model at path {:?}", path.to_str());
         
         if !path.exists() {
             return Err(ProviderError::Other(
@@ -89,6 +93,27 @@ impl CoreMLProvider {
                 "Failed to load CoreML model".to_string()
             ));
         }
+
+        let tokenizer_parent = Path::new(&expanded_path).parent()
+            .ok_or_else(|| ProviderError::Other("Invalid model path".to_string()))?;
+        let tokenizer_path = tokenizer_parent.join("tokenizer.json");
+        
+        let tokenizer = if tokenizer_path.exists() {
+            let tok = Tokenizer::from_file(&tokenizer_path)
+                .map_err(|e| ProviderError::Other(format!("Tokenizer load failed: {}", e)))?;
+            
+            let vocab_size = tok.get_vocab_size(false);
+            info!("Tokenizer loaded: {} tokens", vocab_size);
+            
+            Some(tok)
+        } else {
+            warn!("No tokenizer.json found at {:?}, chat will fail", tokenizer_path);
+            None
+        };
+        
+        let vocab_size = tokenizer.as_ref()
+            .map(|t| t.get_vocab_size(false))
+            .unwrap_or(config.llm.context_length);
         
         info!("CoreML model loaded: {}", path.display());
         
@@ -97,8 +122,10 @@ impl CoreMLProvider {
             model_path: path_str.to_string(),
             input_name: "inputIds".to_string(),
             output_name: "logits".to_string(),
-            registry,
-            config: config.clone(),
+            _registry: registry,
+            _config: config.clone(),
+            _tokenizer: tokenizer,
+            _vocab_size: vocab_size,
         }))
     }
     
@@ -184,19 +211,3 @@ impl Provider for CoreMLProvider {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    #[ignore]
-    fn test_coreml_basic() {
-        let provider = CoreMLProvider::new(
-            "/path/to/model.mlmodelc",
-            "input",
-            "output"
-        );
-        
-        assert!(provider.is_ok() || provider.is_err());
-    }
-}

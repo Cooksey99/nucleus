@@ -12,7 +12,7 @@ async fn main() {
         .init();
 
     let mut config = Config::default();
-    config.llm.model = "../models/Llama-3.1-8B-Instruct-CoreML/llama_3.1_coreml.mlpackage".to_string();
+    config.llm.model = "models/Llama-3.1-8B-Instruct-CoreML/llama_3.1_coreml.mlpackage".to_string();
     
     let registry = PluginRegistry::new(Permission::NONE);
     
