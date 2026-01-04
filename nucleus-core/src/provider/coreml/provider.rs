@@ -3,7 +3,7 @@
 //! This module provides inference using Apple's CoreML framework.
 //! Only available on macOS with the `coreml` feature enabled.
 
-use crate::provider::{ChatRequest, ChatResponse, Provider, ProviderError, Result};
+use crate::provider::{ChatRequest, ChatResponse, Message, Provider, ProviderError, Result};
 use crate::models::EmbeddingModel;
 use crate::Config;
 use async_trait::async_trait;
@@ -12,7 +12,7 @@ use tokenizers::Tokenizer;
 use std::ffi::{CString, c_char, c_float, c_int, c_void};
 use std::path::Path;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 #[repr(C)]
 struct CoreMLModelRef(*mut c_void);
@@ -49,6 +49,38 @@ fn argmax(logits: &[f32]) -> u32 {
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(idx, _)| idx as u32)
         .unwrap_or(0)
+}
+
+fn sample_with_temperature(logits: &[f32], temperature: f64) -> u32 {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hash, Hasher};
+    use std::time::SystemTime;
+    
+    let temp = temperature as f32;
+    
+    let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    
+    let exp_logits: Vec<f32> = logits.iter()
+        .map(|&logit| ((logit - max_logit) / temp).exp())
+        .collect();
+    
+    let sum: f32 = exp_logits.iter().sum();
+    let probs: Vec<f32> = exp_logits.iter().map(|&x| x / sum).collect();
+    
+    let mut hasher = RandomState::new().build_hasher();
+    SystemTime::now().hash(&mut hasher);
+    let seed = hasher.finish();
+    let random_val = ((seed as f64) / (u64::MAX as f64)) as f32;
+    
+    let mut cumsum = 0.0;
+    for (i, &prob) in probs.iter().enumerate() {
+        cumsum += prob;
+        if random_val < cumsum {
+            return i as u32;
+        }
+    }
+    
+    (probs.len() - 1) as u32
 }
 
 pub struct CoreMLProvider {
@@ -140,6 +172,47 @@ impl CoreMLProvider {
         }))
     }
 
+    fn format_chat_prompt(&self, messages: &[Message]) -> Result<String> {
+        let mut prompt = String::new();
+        
+        for message in messages {
+            match message.role.as_str() {
+                "system" => {
+                    prompt.push_str("<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n");
+                    if let Some(ref context) = message.context {
+                        prompt.push_str(context);
+                        prompt.push_str("\n\n");
+                    }
+                    prompt.push_str(&message.content);
+                    prompt.push_str("<|eot_id|>");
+                }
+                "user" => {
+                    prompt.push_str("<|start_header_id|>user<|end_header_id|>\n\n");
+                    if let Some(ref context) = message.context {
+                        prompt.push_str(context);
+                        prompt.push_str("\n\n");
+                    }
+                    prompt.push_str(&message.content);
+                    prompt.push_str("<|eot_id|>");
+                }
+                "assistant" => {
+                    prompt.push_str("<|start_header_id|>assistant<|end_header_id|>\n\n");
+                    prompt.push_str(&message.content);
+                    prompt.push_str("<|eot_id|>");
+                }
+                _ => {
+                    return Err(ProviderError::Other(
+                        format!("Unsupported role: {}", message.role)
+                    ));
+                }
+            }
+        }
+        
+        prompt.push_str("<|start_header_id|>assistant<|end_header_id|>\n\n");
+        
+        Ok(prompt)
+    }
+    
     pub fn generate(&self, prompt: &str, max_tokens: usize) -> Result<String> {
         let tokenizer = self._tokenizer.as_ref()
             .ok_or_else(|| ProviderError::Other("Tokenizer not loaded".to_string()))?;
@@ -250,12 +323,67 @@ impl Drop for CoreMLProvider {
 impl Provider for CoreMLProvider {
     async fn chat<'a>(
         &'a self,
-        _request: ChatRequest,
-        _callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
+        request: ChatRequest,
+        mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()> {
-        Err(ProviderError::Other(
-            "CoreML provider does not support chat interface. Use predict() directly.".to_string()
-        ))
+        let prompt = self.format_chat_prompt(&request.messages)?;
+        
+        let max_tokens = 512;
+        
+        let tokenizer = self._tokenizer.as_ref()
+            .ok_or_else(|| ProviderError::Other("Tokenizer not loaded".to_string()))?;
+        
+        let encoding = tokenizer.encode(prompt.as_str(), false)
+            .map_err(|e| ProviderError::Other(format!("Tokenization failed: {}", e)))?;
+        
+        let mut input_ids: Vec<u32> = encoding.get_ids().to_vec();
+        
+        info!("Starting chat generation with {} input tokens, max {} new tokens", input_ids.len(), max_tokens);
+        
+        for step in 0..max_tokens {
+            let input_floats: Vec<f32> = input_ids.iter().map(|&id| id as f32).collect();
+            
+            let mut logits = vec![0.0f32; self._vocab_size];
+            
+            self.predict(&input_floats, &mut logits)?;
+            
+            let next_token_id = if request.temperature > 0.0 {
+                sample_with_temperature(&logits, request.temperature)
+            } else {
+                argmax(&logits)
+            };
+            
+            if next_token_id == 0 || next_token_id >= self._vocab_size as u32 {
+                debug!("EOS or invalid token {} at step {}", next_token_id, step);
+                
+                callback(ChatResponse {
+                    model: request.model.clone(),
+                    content: String::new(),
+                    done: true,
+                    message: Message::assistant(None, ""),
+                });
+                break;
+            }
+            
+            input_ids.push(next_token_id);
+            
+            let token_str = tokenizer.decode(&[next_token_id], true)
+                .map_err(|e| ProviderError::Other(format!("Detokenization failed: {}", e)))?;
+            
+            callback(ChatResponse {
+                model: request.model.clone(),
+                content: token_str.clone(),
+                done: false,
+                message: Message::assistant(None, token_str),
+            });
+            
+            if step % 10 == 0 {
+                debug!("Generated {} tokens", step + 1);
+            }
+        }
+        
+        info!("Chat generation complete: {} total tokens", input_ids.len());
+        Ok(())
     }
     
     async fn embed(&self, _text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {
