@@ -95,8 +95,8 @@ impl CoreMLProvider {
         Ok(Arc::new(Self {
             model: CoreMLModelRef(handle),
             model_path: path_str.to_string(),
-            input_name: "input".to_string(),
-            output_name: "output".to_string(),
+            input_name: "inputIds".to_string(),
+            output_name: "logits".to_string(),
             registry,
             config: config.clone(),
         }))
