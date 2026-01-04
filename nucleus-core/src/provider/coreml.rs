@@ -55,7 +55,7 @@ impl CoreMLProvider {
     /// Creates a new CoreML provider.
     ///
     /// Loads the CoreML model from the configured path.
-    pub async fn new(config: &Config, registry: Arc<PluginRegistry>) -> Result<Self> {
+    pub async fn new(config: &Config, registry: Arc<PluginRegistry>) -> Result<Arc<Self>> {
         info!("CoreML provider initialized with Apple Neural Engine acceleration");
         
         let model_path = config.llm.model.clone();
@@ -92,14 +92,14 @@ impl CoreMLProvider {
         
         info!("CoreML model loaded: {}", path.display());
         
-        Ok(Self {
+        Ok(Arc::new(Self {
             model: CoreMLModelRef(handle),
             model_path: path_str.to_string(),
             input_name: "input".to_string(),
             output_name: "output".to_string(),
             registry,
             config: config.clone(),
-        })
+        }))
     }
     
     pub fn predict(&self, input: &[f32], output: &mut [f32]) -> Result<()> {

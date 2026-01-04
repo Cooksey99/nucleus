@@ -2,7 +2,7 @@
 
 use super::types::*;
 use super::{MistralRsProvider, OllamaProvider};
-#[cfg(feature = "coreml")]
+#[cfg(any(target_os = "macos", feature = "coreml"))]
 use super::CoreMLProvider;
 use crate::Config;
 use nucleus_plugin::PluginRegistry;
@@ -33,20 +33,16 @@ pub async fn create_provider(
             let provider = MistralRsProvider::new(config, registry).await?;
             Ok(Arc::new(provider))
         }
-        #[cfg(feature = "coreml")]
+        #[cfg(any(target_os = "macos", feature = "coreml"))]
         "coreml" => {
             info!("Using CoreML provider with model: {}", config.llm.model);
-            let provider = CoreMLProvider::new(
-                &config.llm.model,
-                &config.llm.coreml_input_name,
-                &config.llm.coreml_output_name,
-            )?;
-            Ok(Arc::new(provider))
+            let provider = CoreMLProvider::new(config, registry).await?;
+            Ok(provider)
         }
-        #[cfg(not(feature = "coreml"))]
+        #[cfg(not(any(target_os = "macos", feature = "coreml")))]
         "coreml" => {
             Err(ProviderError::Other(
-                "CoreML provider requires the 'coreml' feature. Build with --features coreml".to_string()
+                "CoreML provider is only available on macOS".to_string()
             ))
         }
         _ => {

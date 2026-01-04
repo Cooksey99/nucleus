@@ -1,7 +1,6 @@
-use std::{io::{self, Write}, sync::Arc};
+use std::{io::{self, Write}};
 
-use nucleus::{provider::CoreMLProvider, ChatManager, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
+use nucleus::{provider::ProviderType, ChatManager};
 
 #[tokio::main]
 async fn main() {
@@ -12,11 +11,9 @@ async fn main() {
         )
         .init();
 
-    let config = Config::load_or_default();
-    let registry = PluginRegistry::new(Permission::NONE);
-    let provider = CoreMLProvider::new(&config, registry.clone()).await.unwrap();
-    let manager = ChatManager::builder(config, registry.clone())
-        .with_provider(Arc::new(provider))
+    let manager = ChatManager::builder()
+        .with_provider(ProviderType::CoreML)
+        .with_llm_model("apple/mistral-coreml")
         .build()
         .await
         .expect("Failed to create chat manager");

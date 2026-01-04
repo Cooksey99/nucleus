@@ -29,9 +29,9 @@
 
 use crate::config::Config;
 use crate::models::EmbeddingModel;
-use crate::provider::{ChatRequest, ChatResponse, Message, Provider, Tool, ToolCall, ToolFunction, create_provider};
+use crate::provider::{ChatRequest, ChatResponse, Message, Provider, ProviderType, Tool, ToolCall, ToolFunction, create_provider};
 use crate::rag::RagEngine;
-use nucleus_plugin::PluginRegistry;
+use nucleus_plugin::{Permission, PluginRegistry};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::sync::Arc;
@@ -110,7 +110,10 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn new(config: Config, registry: impl Into<Arc<PluginRegistry>>) -> Result<Self> {
-        Self::builder(config, registry.into()).build().await
+        Self::builder()
+            .with_config(config)
+            .with_registry(registry.into())
+            .build().await
     }
 
     /// Creates a builder for configuring the chat manager.
@@ -143,12 +146,10 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn builder(config: Config, registry: impl Into<Arc<PluginRegistry>>) -> ChatManagerBuilder {
-        let registry = registry.into();
-        ChatManagerBuilder::new(config, registry)
+    pub fn builder() -> ChatManagerBuilder {
+        ChatManagerBuilder::new()
     }
-    
-    
+
     ///
     /// # Examples
     ///
@@ -533,22 +534,32 @@ pub struct ChatManagerBuilder {
     registry: Arc<PluginRegistry>,
     llm_model_override: Option<String>,
     embedding_model_override: Option<EmbeddingModel>,
-    provider_override: Option<Arc<dyn Provider>>,
+    provider_type_override: Option<ProviderType>,
 }
 
 impl ChatManagerBuilder {
     /// Creates a new builder with the given config and registry.
-    pub fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
+    pub fn new() -> Self {
+        let config = Config::default();
+        let registry = PluginRegistry::new(Permission::NONE);
         Self {
             config,
             registry,
             llm_model_override: None,
             embedding_model_override: None,
-            provider_override: None,
+            provider_type_override: None,
         }
     }
 
-    /// Override the default LLM model from the configuration.
+    pub fn with_config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn with_registry(mut self, registry: impl Into<Arc<PluginRegistry>>) -> Self {
+        self.registry = registry.into();
+        self
+    }    /// Override the default LLM model from the configuration.
     ///
     /// Accepts a model identifier, which may be:
     /// - A Hugging Face repo ID: `"Qwen/Qwen3-1.6B-Instruct"`
@@ -621,37 +632,35 @@ impl ChatManagerBuilder {
         self
     }
 
-    /// Override the provider explicitly.
+    /// Override the provider type.
     ///
-    /// This bypasses the provider factory and uses the provided implementation directly.
-    /// Useful when you need more control over provider initialization or want to use
-    /// a custom provider implementation.
+    /// This allows you to specify which LLM provider to use (Ollama, MistralRs, or CoreML).
+    /// The provider will be constructed automatically using the config and registry.
     ///
     /// # Arguments
     ///
-    /// * `provider` - A provider implementation wrapped in an Arc
+    /// * `provider_type` - The type of provider to use
     ///
     /// # Examples
     ///
     /// ```no_run
     /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_core::provider::MistralRsProvider;
+    /// # use nucleus_core::provider::ProviderType;
     /// # use nucleus_plugin::{PluginRegistry, Permission};
-    /// # use std::sync::Arc;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
     /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
-    /// let custom_provider = Arc::new(MistralRsProvider::new(&config, Arc::new(registry.clone())).await?);
-    /// 
-    /// let manager = ChatManager::builder(config, registry)
-    ///     .with_provider(custom_provider)
+    /// let manager = ChatManager::builder()
+    ///     .with_config(config)
+    ///     .with_registry(registry)
+    ///     .with_provider(ProviderType::CoreML)
     ///     .build()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_provider(mut self, provider: Arc<dyn Provider>) -> Self {
-        self.provider_override = Some(provider);
+    pub fn with_provider(mut self, provider_type: ProviderType) -> Self {
+        self.provider_type_override = Some(provider_type);
         self
     }
 
@@ -674,12 +683,11 @@ impl ChatManagerBuilder {
         if let Some(embedding_model) = self.embedding_model_override {
             config.rag.embedding_model = embedding_model;
         }
+        if let Some(provider_type) = self.provider_type_override {
+            config.llm.provider = provider_type.as_str().to_string();
+        }
 
-        let provider = if let Some(provider) = self.provider_override {
-            provider
-        } else {
-            create_provider(&config, Arc::clone(&self.registry)).await?
-        };
+        let provider = create_provider(&config, Arc::clone(&self.registry)).await?;
         let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
 
         Ok(ChatManager {
