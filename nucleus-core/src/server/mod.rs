@@ -13,7 +13,8 @@ mod types;
 #[allow(unused)]
 pub use types::{ChunkType, Message, Request, RequestType, StreamChunk};
 
-use crate::{config::Config, detection, provider::{OllamaProvider, Provider}};
+use crate::{config::Config, detection, provider::{create_provider, Provider}};
+use nucleus_plugin::PluginRegistry;
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::mpsc;
@@ -33,13 +34,16 @@ pub struct Server {
 impl Server {
     /// Creates a new server instance.
     /// 
-    /// This will check if Ollama is installed and running.
-    /// If not, helpful installation/startup instructions will be printed.
-    /// Connects to Qdrant for persistent vector storage.
-    pub async fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
-        detection::detect_ollama()?;
+    /// Initializes the provider based on configuration (ollama, mistralrs, or coreml).
+    /// For Ollama provider, checks if Ollama is installed and running.
+    /// Connects to vector storage based on config.
+    pub async fn new(config: Config, registry: PluginRegistry) -> Result<Self, Box<dyn std::error::Error>> {
+        if config.llm.provider == "ollama" {
+            detection::detect_ollama()?;
+        }
         
-        let provider: Arc<dyn Provider> = Arc::new(OllamaProvider::new(&config));
+        let registry = Arc::new(registry);
+        let provider = create_provider(&config, registry).await?;
         let handler = Arc::new(handler::RequestHandler::new(config, provider).await?);
         let transport = transport::IpcTransport::new(SOCKET_PATH);
         

@@ -79,3 +79,5 @@ config.yaml
 docs/book/
 
 book
+
+/models/

@@ -58,10 +58,31 @@ impl Default for Permission {
 /// Configuration for the AI model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
+    /// Provider type: "ollama", "mistralrs", or "coreml"
+    #[serde(default = "default_provider")]
+    pub provider: String,
     pub model: String,
     pub base_url: String,
     pub temperature: f64,
     pub context_length: usize,
+    /// CoreML-specific: input feature name
+    #[serde(default = "default_input_name")]
+    pub coreml_input_name: String,
+    /// CoreML-specific: output feature name
+    #[serde(default = "default_output_name")]
+    pub coreml_output_name: String,
+}
+
+fn default_provider() -> String {
+    "mistralrs".to_string()
+}
+
+fn default_input_name() -> String {
+    "input".to_string()
+}
+
+fn default_output_name() -> String {
+    "output".to_string()
 }
 
 /// Configuration for RAG processing.
@@ -216,10 +237,13 @@ impl Default for StorageConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            model: "MaziyarPanahi/Qwen3-0.6B-GGUF:Qwen3-0.6B.Q4_K_M.gguf".to_string(), // Pre-quantized GGUF
-            base_url: "http://localhost:11434".to_string(), // For Ollama provider (if used)
+            provider: default_provider(),
+            model: "MaziyarPanahi/Qwen3-0.6B-GGUF:Qwen3-0.6B.Q4_K_M.gguf".to_string(),
+            base_url: "http://localhost:11434".to_string(),
             temperature: 0.6,
             context_length: 32768,
+            coreml_input_name: default_input_name(),
+            coreml_output_name: default_output_name(),
         }
     }
 }

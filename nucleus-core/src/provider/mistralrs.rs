@@ -67,7 +67,7 @@ impl MistralRsProvider {
         // Log which backend we're using
         #[cfg(feature = "metal")]
         info!("mistral.rs provider initialized with Metal GPU acceleration");
-        #[cfg(not(feature = "metal"))]
+        #[cfg(all(target_os = "macos", not(feature = "metal")))]
         warn!("mistral.rs provider running on CPU only - compile with --features metal for GPU acceleration");
         
         let model = Self::build_model(config.clone(), Arc::clone(&registry)).await?;
