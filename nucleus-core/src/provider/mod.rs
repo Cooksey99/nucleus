@@ -7,7 +7,6 @@ mod factory;
 pub mod mistralrs;
 pub mod ollama;
 mod types;
-mod utils;
 
 #[cfg(any(target_os = "macos", feature = "coreml"))]
 pub mod coreml;

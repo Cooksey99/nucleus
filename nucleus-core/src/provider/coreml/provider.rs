@@ -3,7 +3,7 @@
 //! This module provides inference using Apple's CoreML framework.
 //! Only available on macOS with the `coreml` feature enabled.
 
-use super::types::*;
+use crate::provider::{ChatRequest, ChatResponse, Provider, ProviderError, Result};
 use crate::models::EmbeddingModel;
 use crate::Config;
 use async_trait::async_trait;
