@@ -51,6 +51,24 @@ fn argmax(logits: &[f32]) -> u32 {
         .unwrap_or(0)
 }
 
+fn simple_encode(text: &str) -> Vec<u32> {
+    text.chars()
+        .map(|c| (c as u32).min(127999))
+        .collect()
+}
+
+fn simple_decode(tokens: &[u32]) -> String {
+    tokens.iter()
+        .filter_map(|&id| {
+            if id < 128000 {
+                char::from_u32(id)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 fn sample_with_temperature(logits: &[f32], temperature: f64) -> u32 {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hash, Hasher};
@@ -172,45 +190,97 @@ impl CoreMLProvider {
         }))
     }
 
-    fn format_chat_prompt(&self, messages: &[Message]) -> Result<String> {
-        let mut prompt = String::new();
-        
-        for message in messages {
-            match message.role.as_str() {
-                "system" => {
-                    prompt.push_str("<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n");
-                    if let Some(ref context) = message.context {
-                        prompt.push_str(context);
-                        prompt.push_str("\n\n");
+    fn format_chat_prompt(&self, messages: &[Message]) -> Result<(String, Vec<u32>)> {
+        if let Some(ref tokenizer) = self._tokenizer {
+            let mut prompt = String::new();
+            
+            for message in messages {
+                match message.role.as_str() {
+                    "system" => {
+                        prompt.push_str("<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n");
+                        if let Some(ref context) = message.context {
+                            prompt.push_str(context);
+                            prompt.push_str("\n\n");
+                        }
+                        prompt.push_str(&message.content);
+                        prompt.push_str("<|eot_id|>");
                     }
-                    prompt.push_str(&message.content);
-                    prompt.push_str("<|eot_id|>");
-                }
-                "user" => {
-                    prompt.push_str("<|start_header_id|>user<|end_header_id|>\n\n");
-                    if let Some(ref context) = message.context {
-                        prompt.push_str(context);
-                        prompt.push_str("\n\n");
+                    "user" => {
+                        prompt.push_str("<|start_header_id|>user<|end_header_id|>\n\n");
+                        if let Some(ref context) = message.context {
+                            prompt.push_str(context);
+                            prompt.push_str("\n\n");
+                        }
+                        prompt.push_str(&message.content);
+                        prompt.push_str("<|eot_id|>");
                     }
-                    prompt.push_str(&message.content);
-                    prompt.push_str("<|eot_id|>");
-                }
-                "assistant" => {
-                    prompt.push_str("<|start_header_id|>assistant<|end_header_id|>\n\n");
-                    prompt.push_str(&message.content);
-                    prompt.push_str("<|eot_id|>");
-                }
-                _ => {
-                    return Err(ProviderError::Other(
-                        format!("Unsupported role: {}", message.role)
-                    ));
+                    "assistant" => {
+                        prompt.push_str("<|start_header_id|>assistant<|end_header_id|>\n\n");
+                        prompt.push_str(&message.content);
+                        prompt.push_str("<|eot_id|>");
+                    }
+                    _ => {
+                        return Err(ProviderError::Other(
+                            format!("Unsupported role: {}", message.role)
+                        ));
+                    }
                 }
             }
+            
+            prompt.push_str("<|start_header_id|>assistant<|end_header_id|>\n\n");
+            
+            let encoding = tokenizer.encode(prompt.as_str(), false)
+                .map_err(|e| ProviderError::Other(format!("Tokenization failed: {}", e)))?;
+            let token_ids = encoding.get_ids().to_vec();
+            
+            Ok((prompt, token_ids))
+        } else {
+            let token_ids = self.encode_without_tokenizer(messages)?;
+            Ok((String::new(), token_ids))
+        }
+    }
+    
+    fn encode_without_tokenizer(&self, messages: &[Message]) -> Result<Vec<u32>> {
+        const BOS: u32 = 128000;
+        const START_HEADER: u32 = 128006;
+        const END_HEADER: u32 = 128007;
+        const EOT: u32 = 128009;
+        
+        let mut token_ids = vec![BOS];
+        
+        for message in messages {
+            token_ids.push(START_HEADER);
+            
+            let role_tokens = match message.role.as_str() {
+                "system" => simple_encode("system"),
+                "user" => simple_encode("user"),
+                "assistant" => simple_encode("assistant"),
+                _ => return Err(ProviderError::Other(
+                    format!("Unsupported role: {}", message.role)
+                )),
+            };
+            token_ids.extend(role_tokens);
+            token_ids.push(END_HEADER);
+            token_ids.push(198);
+            token_ids.push(198);
+            
+            if let Some(ref context) = message.context {
+                token_ids.extend(simple_encode(context));
+                token_ids.push(198);
+                token_ids.push(198);
+            }
+            
+            token_ids.extend(simple_encode(&message.content));
+            token_ids.push(EOT);
         }
         
-        prompt.push_str("<|start_header_id|>assistant<|end_header_id|>\n\n");
+        token_ids.push(START_HEADER);
+        token_ids.extend(simple_encode("assistant"));
+        token_ids.push(END_HEADER);
+        token_ids.push(198);
+        token_ids.push(198);
         
-        Ok(prompt)
+        Ok(token_ids)
     }
     
     pub fn generate(&self, prompt: &str, max_tokens: usize) -> Result<String> {
@@ -326,17 +396,9 @@ impl Provider for CoreMLProvider {
         request: ChatRequest,
         mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()> {
-        let prompt = self.format_chat_prompt(&request.messages)?;
+        let (_prompt_text, mut input_ids) = self.format_chat_prompt(&request.messages)?;
         
         let max_tokens = 512;
-        
-        let tokenizer = self._tokenizer.as_ref()
-            .ok_or_else(|| ProviderError::Other("Tokenizer not loaded".to_string()))?;
-        
-        let encoding = tokenizer.encode(prompt.as_str(), false)
-            .map_err(|e| ProviderError::Other(format!("Tokenization failed: {}", e)))?;
-        
-        let mut input_ids: Vec<u32> = encoding.get_ids().to_vec();
         
         info!("Starting chat generation with {} input tokens, max {} new tokens", input_ids.len(), max_tokens);
         
@@ -367,8 +429,12 @@ impl Provider for CoreMLProvider {
             
             input_ids.push(next_token_id);
             
-            let token_str = tokenizer.decode(&[next_token_id], true)
-                .map_err(|e| ProviderError::Other(format!("Detokenization failed: {}", e)))?;
+            let token_str = if let Some(ref tokenizer) = self._tokenizer {
+                tokenizer.decode(&[next_token_id], true)
+                    .map_err(|e| ProviderError::Other(format!("Detokenization failed: {}", e)))?
+            } else {
+                simple_decode(&[next_token_id])
+            };
             
             callback(ChatResponse {
                 model: request.model.clone(),
