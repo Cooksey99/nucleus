@@ -1,6 +1,7 @@
 //! Stdio transport for MCP
 //!
 //! Handles communication over stdin/stdout using newline-delimited JSON-RPC messages.
+//! used for local MCP servers
 
 use crate::mcp::types::JsonRpcMessage;
 use anyhow::{Context, Result};
@@ -23,6 +24,7 @@ impl StdioTransport {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
             .context("Failed to spawn MCP server process")?;
 
@@ -100,7 +102,6 @@ impl StdioTransport {
 
 impl Drop for StdioTransport {
     fn drop(&mut self) {
-        let _ = self.child.kill();
         let _ = self.child.wait();
     }
 }

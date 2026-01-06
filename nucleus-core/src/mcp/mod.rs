@@ -8,5 +8,6 @@ pub mod transport;
 pub mod types;
 
 pub use client::McpClient;
+pub use transport::{http::HttpTransport, stdio::StdioTransport};
 pub use types::{JsonRpcError, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse};
 

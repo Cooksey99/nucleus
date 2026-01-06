@@ -4,10 +4,9 @@
 //! with MCP servers.
 
 pub mod stdio;
+pub mod http;
 
 // Placeholder modules for future transports
-#[allow(dead_code)]
-mod http;
 #[allow(dead_code)]
 mod websocket;
 
