@@ -3,46 +3,46 @@ on:
   schedule: [{cron: "0 6 * * *"}]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   github-metrics:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # important: full history
-
-      # Project Overview (Health and Activity)
+      # Step 1: Project Overview
       - uses: lowlighter/metrics@latest
         with:
-          filename: repo-overview.svg
+          filename: metrics/repo-overview.svg
           token: ${{ secrets.METRICS_TOKEN }}
           template: repository
-          repo: Cooksey99/nucleus
+          user: Cooksey99
+          repo: nucleus
           base: header, activity, community
           plugin_lines: yes
           plugin_traffic: yes
 
-      # Community & Contributors (The "People" aspect)
+      # Step 2: Community & Contributors
       - uses: lowlighter/metrics@latest
         with:
-          filename: repo-community.svg
+          filename: metrics/repo-community.svg
           token: ${{ secrets.METRICS_TOKEN }}
           base: ""
           template: repository
-          repo: Cooksey99/nucleus
+          user: Cooksey99
+          repo: nucleus
           plugin_people: yes
-          plugin_people_types: contributors, stargazers, watchers
+          plugin_people_types: contributors, stargazers
           plugin_people_limit: 28
-          plugin_people_size: 28
 
-      # Project Velocity (Issue & PR tracking)
+      # Step 3: Project Velocity
       - uses: lowlighter/metrics@latest
         with:
-          filename: repo-velocity.svg
+          filename: metrics/repo-velocity.svg
           token: ${{ secrets.METRICS_TOKEN }}
           base: ""
           template: repository
-          repo: Cooksey99/nucleus
+          user: Cooksey99
+          repo: nucleus
           plugin_followup: yes
-          plugin_followup_sections: repositories
+          plugin_followup_sections: user # For repos, 'user' section shows repo-specific followup
