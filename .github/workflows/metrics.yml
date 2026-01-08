@@ -1,0 +1,48 @@
+name: Metrics
+on:
+  schedule: [{cron: "0 6 * * *"}]
+  workflow_dispatch:
+
+jobs:
+  github-metrics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # important: full history
+
+      # Project Overview (Health and Activity)
+      - uses: lowlighter/metrics@latest
+        with:
+          filename: repo-overview.svg
+          token: ${{ secrets.METRICS_TOKEN }}
+          template: repository
+          repo: Cooksey99/nucleus
+          base: header, activity, community
+          plugin_lines: yes
+          plugin_traffic: yes
+
+      # Community & Contributors (The "People" aspect)
+      - uses: lowlighter/metrics@latest
+        with:
+          filename: repo-community.svg
+          token: ${{ secrets.METRICS_TOKEN }}
+          base: ""
+          template: repository
+          repo: Cooksey99/nucleus
+          plugin_people: yes
+          plugin_people_types: contributors, stargazers, watchers
+          plugin_people_limit: 28
+          plugin_people_size: 28
+
+      # Project Velocity (Issue & PR tracking)
+      - uses: lowlighter/metrics@latest
+        with:
+          filename: repo-velocity.svg
+          token: ${{ secrets.METRICS_TOKEN }}
+          base: ""
+          template: repository
+          repo: Cooksey99/nucleus
+          plugin_followup: yes
+          plugin_followup_sections: repositories
