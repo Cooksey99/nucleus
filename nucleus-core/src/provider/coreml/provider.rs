@@ -33,6 +33,16 @@ extern "C" {
         output_size: usize,
     ) -> c_int;
     
+    fn coreml_predict_stateful(
+        model: *mut c_void,
+        input_ids: *const i32,
+        input_ids_size: usize,
+        causal_mask: *const c_float,
+        mask_size: usize,
+        output_data: *mut c_float,
+        output_size: usize,
+    ) -> c_int;
+    
     fn coreml_free_model(model: *mut c_void);
     
     fn coreml_get_input_shape(
@@ -67,6 +77,18 @@ fn simple_decode(tokens: &[u32]) -> String {
             }
         })
         .collect()
+}
+
+fn create_causal_mask(seq_len: usize) -> Vec<f32> {
+    let mut mask = vec![f32::NEG_INFINITY; seq_len * seq_len];
+    
+    for i in 0..seq_len {
+        for j in 0..=i {
+            mask[i * seq_len + j] = 0.0;
+        }
+    }
+    
+    mask
 }
 
 fn sample_with_temperature(logits: &[f32], temperature: f64) -> u32 {
@@ -110,6 +132,7 @@ pub struct CoreMLProvider {
     _config: Config,
     _tokenizer: Option<Tokenizer>,
     _vocab_size: usize,
+    max_cache_length: usize,
 }
 
 impl CoreMLProvider {
@@ -187,6 +210,7 @@ impl CoreMLProvider {
             _config: config.clone(),
             _tokenizer: tokenizer,
             _vocab_size: vocab_size,
+            max_cache_length: 2048,
         }))
     }
 
@@ -326,6 +350,33 @@ impl CoreMLProvider {
     }
 
     
+    fn predict_stateful(&self, input_ids: &[u32], output: &mut [f32]) -> Result<()> {
+        let input_ids_i32: Vec<i32> = input_ids.iter().map(|&id| id as i32).collect();
+        
+        let seq_len = input_ids.len();
+        let causal_mask = create_causal_mask(seq_len);
+        
+        let result = unsafe {
+            coreml_predict_stateful(
+                self.model.0,
+                input_ids_i32.as_ptr(),
+                input_ids_i32.len(),
+                causal_mask.as_ptr(),
+                causal_mask.len(),
+                output.as_mut_ptr(),
+                output.len(),
+            )
+        };
+        
+        if result != 0 {
+            return Err(ProviderError::Other(
+                format!("CoreML stateful prediction failed with code: {}", result)
+            ));
+        }
+        
+        Ok(())
+    }
+    
     pub fn predict(&self, input: &[f32], output: &mut [f32]) -> Result<()> {
         let input_name = CString::new(self.input_name.as_str())
             .map_err(|e| ProviderError::Other(format!("Invalid input name: {}", e)))?;
@@ -403,11 +454,9 @@ impl Provider for CoreMLProvider {
         info!("Starting chat generation with {} input tokens, max {} new tokens", input_ids.len(), max_tokens);
         
         for step in 0..max_tokens {
-            let input_floats: Vec<f32> = input_ids.iter().map(|&id| id as f32).collect();
-            
             let mut logits = vec![0.0f32; self._vocab_size];
             
-            self.predict(&input_floats, &mut logits)?;
+            self.predict_stateful(&input_ids, &mut logits)?;
             
             let next_token_id = if request.temperature > 0.0 {
                 sample_with_temperature(&logits, request.temperature)

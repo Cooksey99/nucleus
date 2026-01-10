@@ -135,6 +135,137 @@ int coreml_predict_multiarray(CoreMLModelRef model_ref,
     }
 }
 
+// FIXME: This model requires MLState inputs that can't be properly initialized.
+// The model was exported with coremltools 8.0 using stateful=True, but the
+// state objects (keyCache, valueCache) need to be passed as inputs.
+// 
+// Workaround options:
+// 1. Re-export the model with state_management="automatic" in coremltools
+// 2. Export with stateful=False (no KV cache, slower but simpler)
+// 3. Use a different deployment method (e.g., ONNX Runtime, llama.cpp)
+//
+// For now, this will fail on first prediction.
+static NSMutableDictionary *global_state_dict = nil;
+
+int coreml_predict_stateful(CoreMLModelRef model_ref,
+                             const int32_t* input_ids,
+                             size_t input_ids_size,
+                             const float* causal_mask,
+                             size_t mask_size,
+                             float* output_data,
+                             size_t output_size) {
+    @autoreleasepool {
+        if (!model_ref) {
+            NSLog(@"[CoreML] Error: NULL model reference");
+            return -1;
+        }
+        
+        MLModel *model = (__bridge MLModel*)model_ref;
+        NSError *error = nil;
+        
+        NSArray<NSNumber *> *inputIdsShape = @[@1, @(input_ids_size)];
+        MLMultiArray *inputIdsArray = [[MLMultiArray alloc] initWithShape:inputIdsShape
+                                                                  dataType:MLMultiArrayDataTypeInt32
+                                                                     error:&error];
+        if (error) {
+            NSLog(@"[CoreML] Error creating inputIds array: %@", error.localizedDescription);
+            return -2;
+        }
+        
+        int32_t *inputIdsPtr = (int32_t *)inputIdsArray.dataPointer;
+        memcpy(inputIdsPtr, input_ids, input_ids_size * sizeof(int32_t));
+        
+        size_t mask_dim = (size_t)sqrt((double)mask_size);
+        NSArray<NSNumber *> *maskShape = @[@1, @1, @(mask_dim), @(mask_dim)];
+        MLMultiArray *causalMaskArray = [[MLMultiArray alloc] initWithShape:maskShape
+                                                                    dataType:MLMultiArrayDataTypeFloat16
+                                                                       error:&error];
+        if (error) {
+            NSLog(@"[CoreML] Error creating causalMask array: %@", error.localizedDescription);
+            return -3;
+        }
+        
+        __fp16 *maskPtr = (__fp16 *)causalMaskArray.dataPointer;
+        for (size_t i = 0; i < mask_size; i++) {
+            maskPtr[i] = (__fp16)causal_mask[i];
+        }
+        
+        NSMutableDictionary *inputDict = [NSMutableDictionary dictionaryWithDictionary:@{
+            @"inputIds": inputIdsArray,
+            @"causalMask": causalMaskArray
+        }];
+        
+        if (global_state_dict != nil && global_state_dict.count > 0) {
+            NSLog(@"[CoreML] Adding cached state inputs: %lu entries", (unsigned long)global_state_dict.count);
+            [inputDict addEntriesFromDictionary:global_state_dict];
+        }
+        
+        MLDictionaryFeatureProvider *inputProvider = [[MLDictionaryFeatureProvider alloc]
+            initWithDictionary:inputDict
+            error:&error];
+        
+        if (error) {
+            NSLog(@"[CoreML] Error creating feature provider: %@", error.localizedDescription);
+            return -4;
+        }
+        
+        MLPredictionOptions *options = [[MLPredictionOptions alloc] init];
+        
+        if (global_state_dict == nil) {
+            global_state_dict = [NSMutableDictionary dictionary];
+            NSLog(@"[CoreML] First prediction - will capture output states");
+        }
+        
+        options.outputBackings = global_state_dict;
+        
+        id<MLFeatureProvider> prediction = [model predictionFromFeatures:inputProvider
+                                                                 options:options
+                                                                   error:&error];
+        
+        if (error) {
+            NSLog(@"[CoreML] Prediction error: %@", error.localizedDescription);
+            return -5;
+        }
+        
+        NSLog(@"[CoreML] Prediction output features: %@", prediction.featureNames);
+        for (NSString *name in prediction.featureNames) {
+            MLFeatureValue *val = [prediction featureValueForName:name];
+            NSLog(@"[CoreML]   - %@: type=%ld", name, (long)val.type);
+            
+            if (val.type == 7) {
+                NSLog(@"[CoreML]   Storing state: %@", name);
+                global_state_dict[name] = val;
+            }
+        }
+        
+        MLFeatureValue *outputFeature = [prediction featureValueForName:@"logits"];
+        
+        if (!outputFeature || outputFeature.type != MLFeatureTypeMultiArray) {
+            NSLog(@"[CoreML] Error: Invalid logits output");
+            return -6;
+        }
+        
+        MLMultiArray *outputArray = outputFeature.multiArrayValue;
+        
+        if (outputArray.dataType == MLMultiArrayDataTypeFloat16) {
+            __fp16 *outputPtr = (__fp16 *)outputArray.dataPointer;
+            size_t copySize = MIN(output_size, outputArray.count);
+            for (size_t i = 0; i < copySize; i++) {
+                output_data[i] = (float)outputPtr[i];
+            }
+        } else if (outputArray.dataType == MLMultiArrayDataTypeFloat32) {
+            float *outputPtr = (float *)outputArray.dataPointer;
+            size_t copySize = MIN(output_size, outputArray.count);
+            memcpy(output_data, outputPtr, copySize * sizeof(float));
+        } else {
+            NSLog(@"[CoreML] Error: Unsupported output data type");
+            return -7;
+        }
+        
+        return 0;
+    }
+}
+
 void coreml_free_model(CoreMLModelRef model_ref) {
     if (model_ref) {
         CFRelease(model_ref);
