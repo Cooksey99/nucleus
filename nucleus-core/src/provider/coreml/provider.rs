@@ -27,8 +27,11 @@ unsafe impl Send for CoreMLStateRef {}
 unsafe impl Sync for CoreMLStateRef {}
 
 extern "C" {
+    /// Loads a CoreML model from disk and returns an opaque handle.
     fn coreml_load_model(model_path: *const c_char) -> *mut c_void;
 
+    /// Runs inference on a model using multi-array inputs/outputs.
+    /// Returns 0 on success, non-zero on error.
     fn coreml_predict_multiarray(
         model: *mut c_void,
         input_name: *const c_char,
@@ -39,9 +42,13 @@ extern "C" {
         output_size: usize,
     ) -> c_int;
 
+    /// Creates a new MLState object for stateful sequence predictions.
     fn coreml_make_state(model: *mut c_void) -> *mut c_void;
+    /// Frees an MLState object.
     fn coreml_free_state(state: *mut c_void);
 
+    /// Runs stateful inference with KV cache for autoregressive generation.
+    /// Returns 0 on success, non-zero on error.
     fn coreml_predict_stateful(
         model: *mut c_void,
         state: *mut c_void,
@@ -53,8 +60,11 @@ extern "C" {
         output_size: usize,
     ) -> c_int;
 
+    /// Frees a CoreML model handle.
     fn coreml_free_model(model: *mut c_void);
 
+    /// Queries the shape of a model input by name.
+    /// Returns number of dimensions on success, negative on error.
     fn coreml_get_input_shape(
         model: *mut c_void,
         input_name: *const c_char,
@@ -63,6 +73,7 @@ extern "C" {
     ) -> c_int;
 }
 
+/// Returns the index of the maximum value in logits (greedy sampling).
 fn argmax(logits: &[f32]) -> u32 {
     logits
         .iter()
@@ -72,10 +83,12 @@ fn argmax(logits: &[f32]) -> u32 {
         .unwrap_or(0)
 }
 
+/// Encodes text as Unicode codepoints clamped to 127999 (fallback tokenizer).
 fn simple_encode(text: &str) -> Vec<u32> {
     text.chars().map(|c| (c as u32).min(127_999)).collect()
 }
 
+/// Decodes token IDs back to text by treating them as Unicode codepoints.
 fn simple_decode(tokens: &[u32]) -> String {
     tokens
         .iter()
@@ -89,6 +102,7 @@ fn simple_decode(tokens: &[u32]) -> String {
         .collect()
 }
 
+/// Creates a lower-triangular attention mask for autoregressive generation.
 fn create_causal_mask(seq_len: usize) -> Vec<f32> {
     let mut mask = vec![f32::NEG_INFINITY; seq_len * seq_len];
 
@@ -101,6 +115,7 @@ fn create_causal_mask(seq_len: usize) -> Vec<f32> {
     mask
 }
 
+/// Samples a token from logits using softmax with temperature scaling.
 fn sample_with_temperature(logits: &[f32], temperature: f64) -> u32 {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hash, Hasher};
