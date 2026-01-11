@@ -3,7 +3,10 @@
 //! This module provides functionality to convert text into vector embeddings
 //! using provider embedding models.
 
-use crate::{models::EmbeddingModel, provider::{Provider, ProviderError}};
+use crate::{
+    models::EmbeddingModel,
+    provider::{Provider, ProviderError},
+};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -13,7 +16,7 @@ pub enum EmbedderError {
     /// The provider API returned an error.
     #[error("Provider error: {0}")]
     Provider(#[from] ProviderError),
-    
+
     /// The API response contained no embeddings.
     ///
     /// This typically indicates a problem with the model or request format.
@@ -49,7 +52,7 @@ impl Embedder {
             model: model.into(),
         }
     }
-    
+
     /// Generates a vector embedding for the given text.
     ///
     /// The embedding is a high-dimensional vector (typically 768 or 1024 dimensions)
@@ -78,7 +81,7 @@ impl Embedder {
             .await
             .map_err(EmbedderError::Provider)
     }
-    
+
     /// Generates embeddings for multiple texts in batch.
     ///
     /// This is more efficient than calling `embed()` repeatedly, as it can
@@ -97,14 +100,18 @@ impl Embedder {
     /// Returns an error if any embedding generation fails.
     pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         use tracing::info;
-        
+
         info!("Embedder::embed_batch called with {} texts", texts.len());
-        let result = self.provider
+        let result = self
+            .provider
             .embed_batch(texts, &self.model)
             .await
             .map_err(EmbedderError::Provider)?;
-        info!("Embedder::embed_batch completed, got {} embeddings", result.len());
-        
+        info!(
+            "Embedder::embed_batch completed, got {} embeddings",
+            result.len()
+        );
+
         Ok(result)
     }
 }

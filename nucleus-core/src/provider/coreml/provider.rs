@@ -123,10 +123,7 @@ fn sample_with_temperature(logits: &[f32], temperature: f64) -> u32 {
 
     let temp = temperature as f32;
 
-    let max_logit = logits
-        .iter()
-        .cloned()
-        .fold(f32::NEG_INFINITY, f32::max);
+    let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
 
     let exp_logits: Vec<f32> = logits
         .iter()
@@ -176,8 +173,9 @@ impl CoreMLProvider {
         let model_path = config.llm.model.clone();
 
         let expanded_path = if model_path.starts_with('~') {
-            let home = std::env::var("HOME")
-                .map_err(|_| ProviderError::Other("HOME environment variable not set".to_string()))?;
+            let home = std::env::var("HOME").map_err(|_| {
+                ProviderError::Other("HOME environment variable not set".to_string())
+            })?;
             model_path.replacen('~', &home, 1)
         } else {
             model_path.clone()
@@ -279,8 +277,7 @@ impl CoreMLProvider {
                         prompt.push_str("<|eot_id|>");
                     }
                     "user" => {
-                        prompt
-                            .push_str("<|start_header_id|>user<|end_header_id|>\n\n");
+                        prompt.push_str("<|start_header_id|>user<|end_header_id|>\n\n");
                         if let Some(ref context) = message.context {
                             prompt.push_str(context);
                             prompt.push_str("\n\n");
@@ -289,9 +286,7 @@ impl CoreMLProvider {
                         prompt.push_str("<|eot_id|>");
                     }
                     "assistant" => {
-                        prompt.push_str(
-                            "<|start_header_id|>assistant<|end_header_id|>\n\n",
-                        );
+                        prompt.push_str("<|start_header_id|>assistant<|end_header_id|>\n\n");
                         prompt.push_str(&message.content);
                         prompt.push_str("<|eot_id|>");
                     }
@@ -420,7 +415,11 @@ impl CoreMLProvider {
         let seq_len = input_ids.len();
         let causal_mask = create_causal_mask(seq_len);
 
-        let state_ptr = self.state.as_ref().map(|s| s.0).unwrap_or(std::ptr::null_mut());
+        let state_ptr = self
+            .state
+            .as_ref()
+            .map(|s| s.0)
+            .unwrap_or(std::ptr::null_mut());
 
         let result = unsafe {
             coreml_predict_stateful(
@@ -545,11 +544,12 @@ impl Provider for CoreMLProvider {
         );
 
         // Note: state is stored on self and reused every call; reset_state can be used between conversations.
+        // Before the loop: run a single forward pass on the full prompt to fill KV cache.
+        // First forward pass: full prompt.
+        let mut logits = vec![0.0f32; self._vocab_size];
+        self.predict_stateful(&input_ids, &mut logits)?;
+
         for step in 0..max_tokens {
-            let mut logits = vec![0.0f32; self._vocab_size];
-
-            self.predict_stateful(&input_ids, &mut logits)?;
-
             let next_token_id = if request.temperature > 0.0 {
                 sample_with_temperature(&logits, request.temperature)
             } else {
@@ -557,8 +557,6 @@ impl Provider for CoreMLProvider {
             };
 
             if next_token_id == 0 || next_token_id >= self._vocab_size as u32 {
-                debug!("EOS or invalid token {} at step {}", next_token_id, step);
-
                 callback(ChatResponse {
                     model: request.model.clone(),
                     content: String::new(),
@@ -584,6 +582,8 @@ impl Provider for CoreMLProvider {
                 done: false,
                 message: Message::assistant(None, token_str),
             });
+
+            self.predict_stateful(&input_ids, &mut logits)?;
 
             if step % 10 == 0 {
                 debug!("Generated {} tokens", step + 1);

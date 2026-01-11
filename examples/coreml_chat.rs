@@ -1,4 +1,4 @@
-use std::{io::{self, Write}};
+use std::io::{self, Write};
 
 use nucleus::{provider::ProviderType, ChatManager};
 
@@ -7,7 +7,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("nucleus_core=info".parse().unwrap())
+                .add_directive("nucleus_core=info".parse().unwrap()),
         )
         .init();
 
@@ -41,5 +41,8 @@ async fn main() {
     println!("Total length: {} characters", response.len());
     println!("Time elapsed: {:.2}s", elapsed.as_secs_f64());
     println!("Est. tokens: {}", token_count);
-    println!("Est. throughput: {:.1} tok/s", token_count as f64 / elapsed.as_secs_f64());
+    println!(
+        "Est. throughput: {:.1} tok/s",
+        token_count as f64 / elapsed.as_secs_f64()
+    );
 }

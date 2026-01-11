@@ -7,7 +7,7 @@
 //! 4. AI analyzes and responds
 
 use nucleus_core::{ChatManager, Config};
-use nucleus_plugin::{PluginRegistry, Permission};
+use nucleus_plugin::{Permission, PluginRegistry};
 use nucleus_std::ReadFilePlugin;
 use std::sync::Arc;
 
@@ -17,26 +17,26 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("nucleus_core=debug".parse().unwrap())
+                .add_directive("nucleus_core=debug".parse().unwrap()),
         )
         .init();
 
     println!("Nucleus - AI + Plugin Example\n");
-    
+
     println!("Current dir: {:?}\n", std::env::current_dir()?);
 
     let config = Config::load_or_default();
-    
+
     let mut registry = PluginRegistry::new(Permission::READ_ONLY);
     registry.register(Arc::new(ReadFilePlugin::new()));
 
     let manager = ChatManager::new(config, registry).await?;
 
     println!("Question: What's on line 7 of config.yaml?\n");
-    
+
     let response = manager.query("What's on line 7 of config.yaml?").await?;
-    
+
     println!("AI Response:\n{}", response);
-    
+
     Ok(())
 }

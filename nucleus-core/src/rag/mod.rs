@@ -53,19 +53,19 @@ use crate::config::Config;
 use crate::provider::Provider;
 use embedder::Embedder;
 use indexer::Indexer;
-use store::{create_vector_store, VectorStore};
 use std::path::Path;
 use std::sync::Arc;
+use store::{create_vector_store, VectorStore};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RagError {
     #[error("Embedder error: {0}")]
     Embedder(#[from] embedder::EmbedderError),
-    
+
     #[error("Indexer error: {0}")]
     Indexer(#[from] indexer::IndexerError),
-    
+
     #[error("Failed to retrieve context: {0}")]
     Retrieval(String),
 }
@@ -113,18 +113,25 @@ impl RagEngine {
     /// ```
     pub async fn new(config: &Config, provider: Arc<dyn Provider>) -> Result<Self> {
         let embedder = Embedder::new(provider, config.rag.embedding_model.clone());
-                
+
         let store = create_vector_store(
             config.storage.clone(),
-            config.rag.embedding_model.embedding_dim.try_into().unwrap_or_default(),
-        ).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
-        
+            config
+                .rag
+                .embedding_model
+                .embedding_dim
+                .try_into()
+                .unwrap_or_default(),
+        )
+        .await
+        .map_err(|e| RagError::Retrieval(e.to_string()))?;
+
         let mut indexer_config = config.rag.indexer.clone();
-        
+
         indexer_config.chunk_size = config.rag.indexer.chunk_size;
         indexer_config.chunk_overlap = config.rag.indexer.chunk_overlap;
         let indexer = Indexer::new(indexer_config);
-        
+
         Ok(Self {
             embedder,
             store,
@@ -148,31 +155,34 @@ impl RagEngine {
     ///
     pub async fn add_knowledge(&self, content: &str, source: &str) -> Result<()> {
         let embedding = self.embedder.embed(content).await?;
-        
+
         let count = self.store.count().await.unwrap_or(0);
         let id = format!("{}_{}", source, count);
-        let document = Document::new(id, content, embedding)
-            .with_metadata("source", source);
-        
-        self.store.add(vec![document]).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+        let document = Document::new(id, content, embedding).with_metadata("source", source);
+
+        self.store
+            .add(vec![document])
+            .await
+            .map_err(|e| RagError::Retrieval(e.to_string()))?;
         Ok(())
     }
-    
+
     async fn process_batch(
         &self,
         chunk_batch: &mut Vec<String>,
         chunk_metadata: &mut Vec<(String, String, String, usize)>,
     ) -> Result<()> {
         use tracing::info;
-        
+
         info!("Processing batch of {} chunks", chunk_batch.len());
         let chunk_refs: Vec<&str> = chunk_batch.iter().map(|s| s.as_str()).collect();
-        
+
         info!("Calling embed_batch for {} texts", chunk_refs.len());
         let embeddings = self.embedder.embed_batch(&chunk_refs).await?;
         info!("Received {} embeddings", embeddings.len());
-        
-        let documents: Vec<Document> = embeddings.into_iter()
+
+        let documents: Vec<Document> = embeddings
+            .into_iter()
             .zip(chunk_metadata.drain(..))
             .map(|(embedding, (id, content, source, chunk_idx))| {
                 Document::new(id, content, embedding)
@@ -180,14 +190,17 @@ impl RagEngine {
                     .with_metadata("chunk", chunk_idx.to_string())
             })
             .collect();
-        
-        self.store.add(documents).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
-        
+
+        self.store
+            .add(documents)
+            .await
+            .map_err(|e| RagError::Retrieval(e.to_string()))?;
+
         info!("Batch processed successfully");
         chunk_batch.clear();
         Ok(())
     }
-    
+
     /// Recursively indexes all code files in a directory.
     ///
     /// Walks the directory tree, collecting indexable files (see [`indexer`] for
@@ -214,33 +227,36 @@ impl RagEngine {
     ///
     pub async fn index_directory(&self, dir_path: &Path) -> Result<usize> {
         let files = self.indexer.collect_files(dir_path).await?;
-        
-        use tracing::{info, debug};
+
+        use tracing::{debug, info};
         info!("Found {} files to index", files.len());
         for file in &files {
             debug!(target: "nucleus_core::rag", file = %file.path.display(), "File queued for indexing");
         }
         info!("Starting indexing...");
-        
+
         let mut indexed_count = 0;
-        
+
         const BATCH_SIZE: usize = 32;
         let mut chunk_batch = Vec::new();
         let mut chunk_metadata = Vec::new();
-        
+
         for file in files {
             if file.content.is_empty() {
                 eprintln!("WARNING: File has empty content: {}", file.path.display());
                 continue;
             }
-            
+
             let chunks = self.indexer.chunk_text(&file.content);
-            
+
             if chunks.is_empty() {
-                eprintln!("WARNING: No chunks created for file: {}", file.path.display());
+                eprintln!(
+                    "WARNING: No chunks created for file: {}",
+                    file.path.display()
+                );
                 continue;
             }
-            
+
             for (i, chunk) in chunks.into_iter().enumerate() {
                 chunk_batch.push(chunk.clone());
                 chunk_metadata.push((
@@ -249,25 +265,27 @@ impl RagEngine {
                     file.path.to_string_lossy().to_string(),
                     i,
                 ));
-                
+
                 // Process batch when it reaches BATCH_SIZE
                 if chunk_batch.len() >= BATCH_SIZE {
-                    self.process_batch(&mut chunk_batch, &mut chunk_metadata).await?;
+                    self.process_batch(&mut chunk_batch, &mut chunk_metadata)
+                        .await?;
                 }
             }
-            
+
             indexed_count += 1;
             println!("✓ Indexed: {}", file.path.display());
         }
-        
+
         // Process remaining chunks
         if !chunk_batch.is_empty() {
-            self.process_batch(&mut chunk_batch, &mut chunk_metadata).await?;
+            self.process_batch(&mut chunk_batch, &mut chunk_metadata)
+                .await?;
         }
-        
+
         Ok(indexed_count)
     }
-    
+
     /// Indexes multiple directories in batch.
     ///
     /// This is a convenience method for indexing multiple directories at once.
@@ -298,18 +316,18 @@ impl RagEngine {
     /// ```
     pub async fn index_directories(&self, dir_paths: &[&str]) -> Result<usize> {
         let mut total_count = 0;
-        
+
         for dir_path in dir_paths {
             println!("\nIndexing directory: {}", dir_path);
             let dir_path = Path::new(dir_path);
             let count = self.index_directory(dir_path).await?;
             total_count += count;
         }
-        
+
         println!("\nTotal files indexed: {}", total_count);
         Ok(total_count)
     }
-    
+
     /// Indexes a single file directly.
     ///
     /// This is useful for indexing individual files outside of directory traversal.
@@ -330,28 +348,32 @@ impl RagEngine {
     ///
     pub async fn index_file(&self, file_path: &str) -> Result<usize> {
         use tokio::fs;
-        
-        let content = fs::read_to_string(file_path).await
+
+        let content = fs::read_to_string(file_path)
+            .await
             .map_err(|e| RagError::Indexer(indexer::IndexerError::Io(e)))?;
-        
+
         let chunks = self.indexer.chunk_text(&content);
         let chunk_count = chunks.len();
-        
+
         for (i, chunk) in chunks.into_iter().enumerate() {
             let embedding = self.embedder.embed(&chunk).await?;
-            
+
             let id = format!("{}_chunk_{}", file_path, i);
             let document = Document::new(id, chunk, embedding)
                 .with_metadata("source", file_path)
                 .with_metadata("chunk", i.to_string());
-            
-            self.store.add(vec![document]).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+
+            self.store
+                .add(vec![document])
+                .await
+                .map_err(|e| RagError::Retrieval(e.to_string()))?;
         }
-        
+
         println!("✓ Indexed: {} ({} chunks)", file_path, chunk_count);
         Ok(chunk_count)
     }
-    
+
     /// Retrieves relevant context from the knowledge base for a query.
     ///
     /// Converts the query to an embedding, searches for the top-k most similar
@@ -368,7 +390,7 @@ impl RagEngine {
     ///
     /// The format is:
     /// ```text
-    /// 
+    ///
     /// Relevant context from your knowledge base:
     ///
     /// [1] <first most relevant chunk>
@@ -382,44 +404,51 @@ impl RagEngine {
     ///
     pub async fn retrieve_context(&self, query: &str) -> Result<String> {
         use tracing::{debug, info};
-        
+
         let count = self.store.count().await.unwrap_or(0);
         debug!("Knowledge base count: {}", count);
         if count == 0 {
             debug!("Knowledge base is empty, returning empty context");
             return Ok(String::new());
         }
-        
+
         debug!("Generating query embedding for: {}", query);
         let query_embedding = self.embedder.embed(query).await?;
-        debug!("Query embedding generated, dimension: {}", query_embedding.len());
-        
+        debug!(
+            "Query embedding generated, dimension: {}",
+            query_embedding.len()
+        );
+
         debug!("Searching vector store...");
-        let results = self.store.search(&query_embedding)
+        let results = self
+            .store
+            .search(&query_embedding)
             .await
             .map_err(|e| RagError::Retrieval(e.to_string()))?;
-        
+
         info!("Found {} results from RAG search", results.len());
-        
+
         if results.is_empty() {
             debug!("No results found, returning empty context");
             return Ok(String::new());
         }
-        
+
         let mut context = String::from("\n\nRelevant context from your knowledge base:\n");
-        
+
         for (i, result) in results.iter().enumerate() {
-            debug!("Result {}: score={}, source={:?}", 
-                i + 1, 
-                result.score, 
-                result.document.metadata.get("source"));
+            debug!(
+                "Result {}: score={}, source={:?}",
+                i + 1,
+                result.score,
+                result.document.metadata.get("source")
+            );
             context.push_str(&format!("\n[{}] {}\n", i + 1, result.document.content));
         }
-        
+
         info!("Generated context with {} results", results.len());
         Ok(context)
     }
-    
+
     /// Returns the total number of documents (chunks) in the knowledge base.
     ///
     /// Note: each indexed file is split into multiple chunks, so this represents
@@ -427,19 +456,24 @@ impl RagEngine {
     pub async fn count(&self) -> usize {
         self.store.count().await.unwrap_or(0)
     }
-    
+
     /// Removes all documents from the knowledge base.
     pub async fn clear(&self) -> Result<()> {
-        self.store.clear().await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+        self.store
+            .clear()
+            .await
+            .map_err(|e| RagError::Retrieval(e.to_string()))?;
         Ok(())
     }
-    
+
     /// Returns all unique file paths that have been indexed in the knowledge base.
     ///
     /// This method queries Qdrant to retrieve all unique source file paths
     /// from indexed documents. Useful for displaying indexing status in UIs.
     pub async fn get_indexed_paths(&self) -> Result<Vec<String>> {
-        self.store.get_indexed_paths().await
+        self.store
+            .get_indexed_paths()
+            .await
             .map_err(|e| RagError::Retrieval(e.to_string()))
     }
 
@@ -476,15 +510,18 @@ impl RagEngine {
     /// # }
     /// ```
     pub async fn remove_from_knowledge_base(&self, source_path: &str) -> Result<usize> {
-        let removed = self.store.remove_by_source(source_path).await
+        let removed = self
+            .store
+            .remove_by_source(source_path)
+            .await
             .map_err(|e| RagError::Retrieval(e.to_string()))?;
-        
+
         if removed > 0 {
             println!("Removed {} document chunks from: {}", removed, source_path);
         } else {
             println!("No documents found for: {}", source_path);
         }
-        
+
         Ok(removed)
     }
 }

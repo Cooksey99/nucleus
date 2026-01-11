@@ -2,9 +2,9 @@
 //!
 //! This module provides a unified interface for different vector database implementations.
 
-use super::types::{Document, SearchResult};
-use super::qdrant_store::QdrantStore;
 use super::lancedb_store::LanceDbStore;
+use super::qdrant_store::QdrantStore;
+use super::types::{Document, SearchResult};
 use crate::config::{StorageConfig, StorageMode};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -70,11 +70,7 @@ pub async fn create_vector_store(
 ) -> Result<Arc<dyn VectorStore>> {
     match storage_config.storage_mode.clone() {
         StorageMode::Embedded { path } => {
-            let store = LanceDbStore::new(
-                storage_config,
-                &path,
-                vector_size.into(),
-            ).await?;
+            let store = LanceDbStore::new(storage_config, &path, vector_size.into()).await?;
             Ok(Arc::new(store))
         }
         StorageMode::Grpc { .. } => {

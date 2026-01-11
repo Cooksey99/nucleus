@@ -7,13 +7,13 @@ use crate::config::StorageConfig;
 use super::store::VectorStore;
 use super::types::{Document, SearchResult};
 use anyhow::{Context, Result};
-use lancedb::arrow::arrow_schema::{DataType, Field, Schema};
 use arrow_array::{
     array::{ArrayRef, FixedSizeListArray, Float32Array, StringArray},
     Array, RecordBatch, RecordBatchIterator,
 };
-use futures::stream::TryStreamExt;
 use async_trait::async_trait;
+use futures::stream::TryStreamExt;
+use lancedb::arrow::arrow_schema::{DataType, Field, Schema};
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{connect, Connection, Table};
 use std::sync::Arc;
@@ -22,7 +22,7 @@ use std::sync::Arc;
 ///
 /// Provides zero-setup, in-process vector storage using LanceDB.
 pub struct LanceDbStore {
-    storage_config: StorageConfig, 
+    storage_config: StorageConfig,
     conn: Connection,
     table: Table,
     vector_size: u64,
@@ -38,7 +38,7 @@ impl VectorStore for LanceDbStore {
         let batch = self.create_record_batch(&documents)?;
         let schema_ref = batch.schema();
         let reader = RecordBatchIterator::new(vec![Ok(batch)], schema_ref);
-        
+
         self.table
             .add(reader)
             .execute()
@@ -50,12 +50,15 @@ impl VectorStore for LanceDbStore {
 
     async fn search(&self, query_embedding: &[f32]) -> Result<Vec<SearchResult>> {
         use tracing::{debug, info};
-        
+
         debug!("LanceDB search: opening table '{}'", self.table.name());
         let table = self.conn.open_table(self.table.name()).execute().await?;
-        
-        debug!("LanceDB search: querying with embedding of size {}, limit={}", 
-            query_embedding.len(), self.storage_config.top_k);
+
+        debug!(
+            "LanceDB search: querying with embedding of size {}, limit={}",
+            query_embedding.len(),
+            self.storage_config.top_k
+        );
         let results = table
             .query()
             .limit(self.storage_config.top_k)
@@ -64,62 +67,74 @@ impl VectorStore for LanceDbStore {
             .await
             .context("Failed to execute LanceDB query")?;
 
-        let batches: Vec<RecordBatch> = results.try_collect().await
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
             .context("Failed to collect query results")?;
-        
+
         debug!("LanceDB search: received {} batches", batches.len());
 
         let mut search_results = Vec::new();
-        
+
         for batch in batches {
             let num_rows = batch.num_rows();
             debug!("Processing batch with {} rows", num_rows);
-            
-            let id_col = batch.column_by_name("id")
-                .context("Missing 'id' column")?;
-            let content_col = batch.column_by_name("content")
+
+            let id_col = batch.column_by_name("id").context("Missing 'id' column")?;
+            let content_col = batch
+                .column_by_name("content")
                 .context("Missing 'content' column")?;
-            let source_col = batch.column_by_name("source")
+            let source_col = batch
+                .column_by_name("source")
                 .context("Missing 'source' column")?;
-            let distance_col = batch.column_by_name("_distance")
+            let distance_col = batch
+                .column_by_name("_distance")
                 .context("Missing '_distance' column")?;
-            
-            let id_array = id_col.as_any().downcast_ref::<StringArray>()
+
+            let id_array = id_col
+                .as_any()
+                .downcast_ref::<StringArray>()
                 .context("Failed to cast 'id' to StringArray")?;
-            let content_array = content_col.as_any().downcast_ref::<StringArray>()
+            let content_array = content_col
+                .as_any()
+                .downcast_ref::<StringArray>()
                 .context("Failed to cast 'content' to StringArray")?;
-            let source_array = source_col.as_any().downcast_ref::<StringArray>()
+            let source_array = source_col
+                .as_any()
+                .downcast_ref::<StringArray>()
                 .context("Failed to cast 'source' to StringArray")?;
-            let distance_array = distance_col.as_any().downcast_ref::<Float32Array>()
+            let distance_array = distance_col
+                .as_any()
+                .downcast_ref::<Float32Array>()
                 .context("Failed to cast '_distance' to Float32Array")?;
-            
+
             for i in 0..num_rows {
                 let id = id_array.value(i).to_string();
                 let content = content_array.value(i).to_string();
                 let distance = distance_array.value(i);
-                
+
                 let mut metadata = std::collections::HashMap::new();
                 if !source_col.is_null(i) {
                     metadata.insert("source".to_string(), source_array.value(i).to_string());
                 }
-                
+
                 let document = Document {
                     id,
                     content,
                     embedding: vec![],
                     metadata,
                 };
-                
+
                 let score = 1.0 - distance;
-                
-                search_results.push(SearchResult {
-                    document,
-                    score,
-                });
+
+                search_results.push(SearchResult { document, score });
             }
         }
-        
-        info!("LanceDB search complete: found {} results", search_results.len());
+
+        info!(
+            "LanceDB search complete: found {} results",
+            search_results.len()
+        );
         Ok(search_results)
     }
 
@@ -133,90 +148,101 @@ impl VectorStore for LanceDbStore {
             .drop_table(self.table.name(), &[])
             .await
             .context("Failed to drop table")?;
-        
+
         let schema = Self::create_schema(self.vector_size);
         self.conn
             .create_empty_table(self.table.name(), schema)
             .execute()
             .await
             .context("Failed to recreate table")?;
-        
+
         Ok(())
     }
 
     async fn get_indexed_paths(&self) -> Result<Vec<String>> {
         use std::collections::HashSet;
-        
+
         let table = self.conn.open_table(self.table.name()).execute().await?;
         let results = table
             .query()
             .execute()
             .await
             .context("Failed to query all documents")?;
-        
-        let batches: Vec<RecordBatch> = results.try_collect().await
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
             .context("Failed to collect query results")?;
-        
+
         let mut unique_paths = HashSet::new();
-        
+
         for batch in batches {
-            let source_col = batch.column_by_name("source")
+            let source_col = batch
+                .column_by_name("source")
                 .context("Missing 'source' column")?;
-            let source_array = source_col.as_any().downcast_ref::<StringArray>()
+            let source_array = source_col
+                .as_any()
+                .downcast_ref::<StringArray>()
                 .context("Failed to cast 'source' to StringArray")?;
-            
+
             for i in 0..batch.num_rows() {
                 if !source_array.is_null(i) {
                     unique_paths.insert(source_array.value(i).to_string());
                 }
             }
         }
-        
+
         Ok(unique_paths.into_iter().collect())
     }
 
     async fn remove_by_source(&self, source_path: &str) -> Result<usize> {
         use std::path::Path;
-        
-        let normalized_path = Path::new(source_path)
-            .to_string_lossy()
-            .replace("\\", "/");
-        
+
+        let normalized_path = Path::new(source_path).to_string_lossy().replace("\\", "/");
+
         let table = self.conn.open_table(self.table.name()).execute().await?;
         let results = table
             .query()
             .execute()
             .await
             .context("Failed to query all documents")?;
-        
-        let batches: Vec<RecordBatch> = results.try_collect().await
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect()
+            .await
             .context("Failed to collect query results")?;
-        
+
         let mut ids_to_delete = Vec::new();
-        
+
         for batch in batches {
-            let id_col = batch.column_by_name("id")
-                .context("Missing 'id' column")?;
-            let source_col = batch.column_by_name("source")
+            let id_col = batch.column_by_name("id").context("Missing 'id' column")?;
+            let source_col = batch
+                .column_by_name("source")
                 .context("Missing 'source' column")?;
-            
-            let id_array = id_col.as_any().downcast_ref::<StringArray>()
+
+            let id_array = id_col
+                .as_any()
+                .downcast_ref::<StringArray>()
                 .context("Failed to cast 'id' to StringArray")?;
-            let source_array = source_col.as_any().downcast_ref::<StringArray>()
+            let source_array = source_col
+                .as_any()
+                .downcast_ref::<StringArray>()
                 .context("Failed to cast 'source' to StringArray")?;
-            
+
             for i in 0..batch.num_rows() {
                 if !source_array.is_null(i) {
                     let point_source = source_array.value(i).replace("\\", "/");
-                    if point_source == normalized_path || point_source.starts_with(&format!("{}/", normalized_path)) {
+                    if point_source == normalized_path
+                        || point_source.starts_with(&format!("{}/", normalized_path))
+                    {
                         ids_to_delete.push(id_array.value(i).to_string());
                     }
                 }
             }
         }
-        
+
         let count = ids_to_delete.len();
-        
+
         if !ids_to_delete.is_empty() {
             let delete_expr = format!("id IN ('{}')", ids_to_delete.join("', '"));
             table
@@ -224,7 +250,7 @@ impl VectorStore for LanceDbStore {
                 .await
                 .context("Failed to delete documents by source")?;
         }
-        
+
         Ok(count)
     }
 }
@@ -263,11 +289,13 @@ impl LanceDbStore {
 
         let ids: Vec<&str> = documents.iter().map(|doc| doc.id.as_str()).collect();
         let contents: Vec<&str> = documents.iter().map(|doc| doc.content.as_str()).collect();
-        let sources: Vec<Option<&str>> = documents.iter()
+        let sources: Vec<Option<&str>> = documents
+            .iter()
             .map(|doc| doc.metadata.get("source").map(|s| s.as_str()))
             .collect();
 
-        let all_vector_values: Vec<f32> = documents.iter()
+        let all_vector_values: Vec<f32> = documents
+            .iter()
             .flat_map(|doc| doc.embedding.iter().copied())
             .collect();
 
@@ -310,7 +338,7 @@ impl LanceDbStore {
 
         let table_names = conn.table_names().execute().await?;
         let collection_name = &storage_config.vector_db.collection_name;
-        
+
         let table = if table_names.contains(&collection_name.to_string()) {
             conn.open_table(collection_name)
                 .execute()

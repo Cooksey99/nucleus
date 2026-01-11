@@ -30,13 +30,13 @@ impl ProviderType {
 pub enum ProviderError {
     #[error("HTTP request failed: {0}")]
     Request(#[from] reqwest::Error),
-    
+
     #[error("JSON parsing failed: {0}")]
     Json(#[from] serde_json::Error),
-    
+
     #[error("API error: {0}")]
     Api(String),
-    
+
     #[error("Provider error: {0}")]
     Other(String),
 }
@@ -57,10 +57,10 @@ pub trait Provider: Send + Sync {
         request: ChatRequest,
         callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()>;
-    
+
     /// Generate an embedding vector for the given text.
     async fn embed(&self, text: &str, model: &EmbeddingModel) -> Result<Vec<f32>>;
-    
+
     /// Generate embeddings for multiple texts in batch.
     /// Default implementation calls embed() sequentially.
     async fn embed_batch(&self, texts: &[&str], model: &EmbeddingModel) -> Result<Vec<Vec<f32>>> {
@@ -90,12 +90,12 @@ impl ChatRequest {
             tools: None,
         }
     }
-    
+
     pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.temperature = temperature;
         self
     }
-    
+
     pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = Some(tools);
         self
@@ -119,10 +119,10 @@ pub struct Message {
     pub context: Option<String>,
     /// Message input from the user
     pub content: String,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
 }
@@ -137,7 +137,7 @@ impl Message {
             tool_calls: None,
         }
     }
-    
+
     pub fn user(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "user".to_string(),
@@ -147,7 +147,7 @@ impl Message {
             tool_calls: None,
         }
     }
-    
+
     pub fn assistant(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "assistant".to_string(),
@@ -157,7 +157,7 @@ impl Message {
             tool_calls: None,
         }
     }
-    
+
     pub fn tool(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "tool".to_string(),
@@ -209,7 +209,7 @@ pub struct EmbedRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbedResponse {
     pub model: String,
-    
+
     #[serde(default)]
     pub embeddings: Vec<Vec<f32>>,
 }

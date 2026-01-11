@@ -2,8 +2,8 @@
 //!
 //! This module provides an Ollama HTTP API client that implements the Provider trait.
 
-use crate::models::EmbeddingModel;
 use super::types::*;
+use crate::models::EmbeddingModel;
 use async_trait::async_trait;
 
 use futures::StreamExt;
@@ -44,68 +44,81 @@ impl Provider for OllamaProvider {
         mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()> {
         let url = format!("{}/api/chat", self.base_url);
-        
+
         // Convert to Ollama-specific request format
         let ollama_request = OllamaChatRequest {
             model: request.model.clone(),
-            messages: request.messages.iter().map(|m| OllamaMessage {
-                role: m.role.clone(),
-                content: m.content.clone(),
-                images: m.images.clone(),
-                tool_calls: m.tool_calls.as_ref().map(|tcs| {
-                    tcs.iter().map(|tc| OllamaToolCall {
-                        function: OllamaToolCallFunction {
-                            name: tc.function.name.clone(),
-                            arguments: tc.function.arguments.clone(),
-                        },
-                    }).collect()
-                }),
-            }).collect(),
+            messages: request
+                .messages
+                .iter()
+                .map(|m| OllamaMessage {
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                    images: m.images.clone(),
+                    tool_calls: m.tool_calls.as_ref().map(|tcs| {
+                        tcs.iter()
+                            .map(|tc| OllamaToolCall {
+                                function: OllamaToolCallFunction {
+                                    name: tc.function.name.clone(),
+                                    arguments: tc.function.arguments.clone(),
+                                },
+                            })
+                            .collect()
+                    }),
+                })
+                .collect(),
             options: {
                 let mut opts = HashMap::new();
-                opts.insert("temperature".to_string(), serde_json::json!(request.temperature));
+                opts.insert(
+                    "temperature".to_string(),
+                    serde_json::json!(request.temperature),
+                );
                 Some(opts)
             },
             stream: true,
             tools: request.tools.as_ref().map(|tools| {
-                tools.iter().map(|t| OllamaTool {
-                    tool_type: t.tool_type.clone(),
-                    function: OllamaToolFunction {
-                        name: t.function.name.clone(),
-                        description: t.function.description.clone(),
-                        parameters: t.function.parameters.clone(),
-                    },
-                }).collect()
+                tools
+                    .iter()
+                    .map(|t| OllamaTool {
+                        tool_type: t.tool_type.clone(),
+                        function: OllamaToolFunction {
+                            name: t.function.name.clone(),
+                            description: t.function.description.clone(),
+                            parameters: t.function.parameters.clone(),
+                        },
+                    })
+                    .collect()
             }),
         };
-        
-        let response = self.http_client
+
+        let response = self
+            .http_client
             .post(&url)
             .json(&ollama_request)
             .send()
             .await?;
-        
+
         if !response.status().is_success() {
             let error_text = response.text().await?;
             return Err(ProviderError::Api(error_text));
         }
-        
+
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::new();
-        
+
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result?;
             buffer.extend_from_slice(&chunk);
-            
+
             while let Some(newline_pos) = buffer.iter().position(|&b| b == b'\n') {
                 let line = buffer.drain(..=newline_pos).collect::<Vec<_>>();
-                
+
                 if line.len() <= 1 {
                     continue;
                 }
-                
-                let line_str = String::from_utf8_lossy(&line[..line.len()-1]);
-                
+
+                let line_str = String::from_utf8_lossy(&line[..line.len() - 1]);
+
                 if let Ok(ollama_response) = serde_json::from_str::<OllamaChatResponse>(&line_str) {
                     // Convert to common ChatResponse
                     callback(ChatResponse {
@@ -118,44 +131,48 @@ impl Provider for OllamaProvider {
                             context: None,
                             images: ollama_response.message.images.clone(),
                             tool_calls: ollama_response.message.tool_calls.as_ref().map(|tcs| {
-                                tcs.iter().map(|tc| ToolCall {
-                                    function: ToolCallFunction {
-                                        name: tc.function.name.clone(),
-                                        arguments: tc.function.arguments.clone(),
-                                    },
-                                }).collect()
+                                tcs.iter()
+                                    .map(|tc| ToolCall {
+                                        function: ToolCallFunction {
+                                            name: tc.function.name.clone(),
+                                            arguments: tc.function.arguments.clone(),
+                                        },
+                                    })
+                                    .collect()
                             }),
                         },
                     });
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     async fn embed(&self, text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {
         let url = format!("{}/api/embed", self.base_url);
-        
+
         let embed_request = EmbedRequest {
             model: self.config.rag.embedding_model.name.clone(),
             input: text.to_string(),
         };
-        
-        let response = self.http_client
+
+        let response = self
+            .http_client
             .post(&url)
             .json(&embed_request)
             .send()
             .await?;
-        
+
         if !response.status().is_success() {
             let error_text = response.text().await?;
             return Err(ProviderError::Api(error_text));
         }
-        
+
         let embed_response = response.json::<EmbedResponse>().await?;
-        
-        embed_response.embeddings
+
+        embed_response
+            .embeddings
             .into_iter()
             .next()
             .ok_or_else(|| ProviderError::Other("No embeddings returned".to_string()))

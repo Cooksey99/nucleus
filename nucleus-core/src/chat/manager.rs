@@ -29,10 +29,13 @@
 
 use crate::config::Config;
 use crate::models::EmbeddingModel;
-use crate::provider::{ChatRequest, ChatResponse, Message, Provider, ProviderType, Tool, ToolCall, ToolFunction, create_provider};
+use crate::provider::{
+    create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, Tool, ToolCall,
+    ToolFunction,
+};
 use crate::rag::RagEngine;
-use nucleus_plugin::{Permission, PluginRegistry};
 use anyhow::{Context, Result};
+use nucleus_plugin::{Permission, PluginRegistry};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -81,7 +84,7 @@ pub struct ChatManager {
     /// Registry for available plugins/tools
     registry: Arc<PluginRegistry>,
     /// RAG manager for knowledge base integration (with persistent storage)
-    rag_engine:  Arc<RagEngine>,
+    rag_engine: Arc<RagEngine>,
 }
 
 impl ChatManager {
@@ -113,7 +116,8 @@ impl ChatManager {
         Self::builder()
             .with_config(config)
             .with_registry(registry.into())
-            .build().await
+            .build()
+            .await
     }
 
     /// Creates a builder for configuring the chat manager.
@@ -162,7 +166,7 @@ impl ChatManager {
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
     /// let registry = PluginRegistry::new(Permission::READ_ONLY);
-    /// 
+    ///
     /// let manager = ChatManager::new(config, registry).await?
     ///     .with_provider(Arc::new(MistralRsProvider::new("qwen3:0.6b"))).await?;
     /// # Ok(())
@@ -173,7 +177,7 @@ impl ChatManager {
         self.provider = provider;
         Ok(self)
     }
-    
+
     /// Replace the RAG manager.
     ///
     /// # Examples
@@ -187,7 +191,7 @@ impl ChatManager {
     /// let config = Config::load_or_default();
     /// let registry = PluginRegistry::new(Permission::READ_ONLY);
     /// let provider = Arc::new(/* create provider */);
-    /// 
+    ///
     /// let custom_rag = RagEngine::new(&config, provider).await?;
     /// let manager = ChatManager::new(config, registry).await?
     ///     .with_rag(custom_rag);
@@ -198,7 +202,7 @@ impl ChatManager {
         self.rag_engine = rag;
         self
     }
-    
+
     /// Loads previously indexed documents from persistent storage.
     ///
     /// Should be called after creating the ChatManager to restore the knowledge base.
@@ -228,7 +232,7 @@ impl ChatManager {
     pub async fn knowledge_base_count(&self) -> usize {
         self.rag_engine.count().await
     }
-    
+
     /// Indexes a directory into the knowledge base.
     ///
     /// # Arguments
@@ -243,7 +247,9 @@ impl ChatManager {
     ///
     /// Returns an error if indexing fails.
     pub async fn index_directory(&self, dir_path: &Path) -> Result<usize> {
-        self.rag_engine.index_directory(dir_path).await
+        self.rag_engine
+            .index_directory(dir_path)
+            .await
             .context("Failed to index directory")
     }
 
@@ -301,7 +307,7 @@ impl ChatManager {
     pub async fn query(&self, user_message: &str) -> Result<String> {
         self.query_stream(user_message, |_| {}).await
     }
-    
+
     /// Send a query to the LLM and stream the response through a callback.
     ///
     /// This is the streaming version of [`query`](Self::query). It allows you to
@@ -345,11 +351,13 @@ impl ChatManager {
         // Retrieve relevant context from knowledge base if available
         let rag_count = self.rag_engine.count().await;
         debug!("RAG knowledge base has {} documents", rag_count);
-        
+
         // Context retrieved from RAG
         let context = if rag_count > 0 {
             debug!("Retrieving RAG context for query: {}", user_message);
-            self.rag_engine.retrieve_context(user_message).await
+            self.rag_engine
+                .retrieve_context(user_message)
+                .await
                 .unwrap_or_else(|e| {
                     debug!("Could not retrieve RAG context: {}", e);
                     String::new()
@@ -358,16 +366,19 @@ impl ChatManager {
             debug!("RAG knowledge base is empty, skipping context retrieval");
             String::new()
         };
-        
+
         // Construct user message with context if available
         let enhanced_message = if !context.is_empty() {
-            debug!("Enhanced message with {} characters of RAG context", context.len());
+            debug!(
+                "Enhanced message with {} characters of RAG context",
+                context.len()
+            );
             format!("{}{}", context, user_message)
         } else {
             debug!("No RAG context available, using original message");
             user_message.to_string()
         };
-        
+
         let mut messages = vec![Message::user(Some(context.clone()), &enhanced_message)];
 
         let tools = self.build_tools();
@@ -387,28 +398,30 @@ impl ChatManager {
             let mut current_response: Option<ChatResponse> = None;
             let mut tool_calls: Option<Vec<ToolCall>> = None;
             self.provider
-                .chat(request, Box::new(|response| {
-                    // Call user's streaming callback with incremental content
-                    if !response.done && !response.content.is_empty() {
-                        on_chunk(&response.content);
-                    }
-                    
-                    // Accumulate incremental content (response.content), not full message
-                    accumulated_content.push_str(&response.content);
-                    
-                    // Preserve tool calls from any chunk - they typically arrive early
-                    // in the stream and may be absent from the final done=true chunk
-                    if let Some(ref tool_calls_ref) = response.message.tool_calls {
-                        tool_calls = Some(tool_calls_ref.clone());
-                    }
-                    
-                    current_response = Some(response);
-                }))
+                .chat(
+                    request,
+                    Box::new(|response| {
+                        // Call user's streaming callback with incremental content
+                        if !response.done && !response.content.is_empty() {
+                            on_chunk(&response.content);
+                        }
+
+                        // Accumulate incremental content (response.content), not full message
+                        accumulated_content.push_str(&response.content);
+
+                        // Preserve tool calls from any chunk - they typically arrive early
+                        // in the stream and may be absent from the final done=true chunk
+                        if let Some(ref tool_calls_ref) = response.message.tool_calls {
+                            tool_calls = Some(tool_calls_ref.clone());
+                        }
+
+                        current_response = Some(response);
+                    }),
+                )
                 .await
                 .context("Failed to get LLM response")?;
 
-            let mut response = current_response
-                .context("No response from LLM")?;
+            let mut response = current_response.context("No response from LLM")?;
 
             // Reconstruct the complete message with accumulated content and preserved tool calls
             response.message.content = accumulated_content;
@@ -559,7 +572,8 @@ impl ChatManagerBuilder {
     pub fn with_registry(mut self, registry: impl Into<Arc<PluginRegistry>>) -> Self {
         self.registry = registry.into();
         self
-    }    /// Override the default LLM model from the configuration.
+    }
+    /// Override the default LLM model from the configuration.
     ///
     /// Accepts a model identifier, which may be:
     /// - A Hugging Face repo ID: `"Qwen/Qwen3-1.6B-Instruct"`
@@ -593,7 +607,7 @@ impl ChatManagerBuilder {
     /// # Ok(())
     /// # }
     /// ````
-    /// 
+    ///
     /// **Local GGUF Blob (Ollama) — NOT CURRENTLY SUPPORTED**
     /// ```
     /// let manager = ChatManager::builder(config, registry)

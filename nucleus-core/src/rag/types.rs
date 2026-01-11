@@ -27,11 +27,7 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(
-        id: impl Into<String>,
-        content: impl Into<String>,
-        embedding: Vec<f32>,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, content: impl Into<String>, embedding: Vec<f32>) -> Self {
         Self {
             id: id.into(),
             content: content.into(),
@@ -39,7 +35,7 @@ impl Document {
             metadata: HashMap::new(),
         }
     }
-    
+
     pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.metadata.insert(key.into(), value.into());
         self

@@ -1,17 +1,16 @@
 use async_trait::async_trait;
 use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
-use std::path::PathBuf;
 use serde::Deserialize;
 use serde_json::Value;
+use std::path::PathBuf;
 use tokio::process::Command;
-
 
 #[derive(Debug, Deserialize)]
 pub struct ExecParams {
     command: String,
     #[serde(default)]
     args: Vec<String>,
-    cwd: PathBuf
+    cwd: PathBuf,
 }
 
 pub struct ExecPlugin {
@@ -26,7 +25,12 @@ impl ExecPlugin {
         }
     }
 
-    pub async fn run(&self, command: String, args: Vec<String>, cwd: PathBuf) -> Result<PluginOutput> {
+    pub async fn run(
+        &self,
+        command: String,
+        args: Vec<String>,
+        cwd: PathBuf,
+    ) -> Result<PluginOutput> {
         let input = serde_json::json!({
             "command": command,
             "args": args,
@@ -72,7 +76,7 @@ impl Plugin for ExecPlugin {
     fn required_permission(&self) -> Permission {
         Permission::ALL
     }
-    
+
     async fn execute(&self, input: Value) -> Result<PluginOutput> {
         let params: ExecParams = serde_json::from_value(input)
             .map_err(|e| PluginError::InvalidInput(format!("Invalid parameters: {}", e)))?;
@@ -92,8 +96,8 @@ impl Plugin for ExecPlugin {
                     "stdout: {}\nstderr: {}\nexit_code: {}",
                     stdout, stderr, exit_code
                 )))
-            },
-            Err(e) => Err(PluginError::ExecutionFailed(e.to_string()))
+            }
+            Err(e) => Err(PluginError::ExecutionFailed(e.to_string())),
         };
 
         output
@@ -104,10 +108,9 @@ impl Plugin for ExecPlugin {
 mod tests {
     use super::*;
 
-
     #[tokio::test]
     async fn ls_command() {
-        let plugin = ExecPlugin::new(); 
+        let plugin = ExecPlugin::new();
 
         let input = serde_json::json!({
             "command": "ls",

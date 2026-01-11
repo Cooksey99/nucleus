@@ -31,11 +31,11 @@ pub use nucleus_dev;
 /// Prelude module for convenient imports
 pub mod prelude {
     pub use nucleus_core::*;
-    pub use nucleus_plugin::{Plugin, PluginRegistry, Permission};
-    
+    pub use nucleus_plugin::{Permission, Plugin, PluginRegistry};
+
     #[cfg(feature = "std")]
     pub use nucleus_std;
-    
+
     #[cfg(feature = "dev")]
     pub use nucleus_dev;
 }

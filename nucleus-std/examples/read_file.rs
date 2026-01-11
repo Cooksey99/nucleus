@@ -1,4 +1,4 @@
-use nucleus_plugin::{PluginRegistry, Permission};
+use nucleus_plugin::{Permission, PluginRegistry};
 use nucleus_std::ReadFilePlugin;
 use std::{path::Path, sync::Arc};
 
@@ -8,7 +8,7 @@ async fn main() {
 
     // Create plugin registry with read permissions
     let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-    
+
     // Register the ReadFilePlugin
     let read_plugin = Arc::new(ReadFilePlugin::new());
     if registry.register(read_plugin.clone()) {
@@ -24,7 +24,7 @@ async fn main() {
     let input = serde_json::json!({
         "path": path
     });
-    
+
     // Call using LLM execute method
     match registry.execute("read_file", input).await {
         Ok(output) => {
@@ -56,7 +56,7 @@ async fn main() {
     let input = serde_json::json!({
         "path": "/nonexistent/file.txt"
     });
-    
+
     match registry.execute("read_file", input).await {
         Ok(_) => {
             println!("This shouldn't succeed!\n");

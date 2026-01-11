@@ -10,7 +10,9 @@ use super::types::*;
 use anyhow::Context;
 use async_trait::async_trait;
 use mistralrs::{
-    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, PagedAttentionMetaBuilder, RequestBuilder, Response, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolChoice, ToolType
+    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, PagedAttentionMetaBuilder,
+    RequestBuilder, Response, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool,
+    ToolChoice, ToolType,
 };
 use nucleus_plugin::PluginRegistry;
 use tracing::{debug, info, warn};
@@ -63,13 +65,13 @@ impl MistralRsProvider {
     /// ```
     pub async fn new(config: &Config, registry: Arc<PluginRegistry>) -> Result<Self> {
         let model_name = config.llm.model.clone();
-        
+
         // Log which backend we're using
         #[cfg(feature = "metal")]
         info!("mistral.rs provider initialized with Metal GPU acceleration");
         #[cfg(all(target_os = "macos", not(feature = "metal")))]
         warn!("mistral.rs provider running on CPU only - compile with --features metal for GPU acceleration");
-        
+
         let model = Self::build_model(config.clone(), Arc::clone(&registry)).await?;
 
         Ok(Self {
@@ -86,8 +88,9 @@ impl MistralRsProvider {
 
         // Expand tilde in path if present
         let expanded_path = if model_name.starts_with('~') {
-            let home = std::env::var("HOME")
-                .map_err(|_| ProviderError::Other("HOME environment variable not set".to_string()))?;
+            let home = std::env::var("HOME").map_err(|_| {
+                ProviderError::Other("HOME environment variable not set".to_string())
+            })?;
             model_name.replacen('~', &home, 1)
         } else {
             model_name.clone()
@@ -96,14 +99,16 @@ impl MistralRsProvider {
         // Detect model type - prioritize local files first
         let path_obj = Path::new(&expanded_path);
         let is_local_file = path_obj.exists() && path_obj.is_file();
-        
+
         let model = if is_local_file {
             // Local GGUF file (any extension, including Ollama blobs)
-            let dir = path_obj.parent()
+            let dir = path_obj
+                .parent()
                 .ok_or_else(|| ProviderError::Other("Invalid GGUF file path".to_string()))?
                 .to_str()
                 .ok_or_else(|| ProviderError::Other("Invalid UTF-8 in path".to_string()))?;
-            let filename = path_obj.file_name()
+            let filename = path_obj
+                .file_name()
                 .ok_or_else(|| ProviderError::Other("Invalid GGUF filename".to_string()))?
                 .to_str()
                 .ok_or_else(|| ProviderError::Other("Invalid UTF-8 in filename".to_string()))?;
@@ -113,13 +118,19 @@ impl MistralRsProvider {
                 .with_throughput_logging()
                 .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
                 .context("Unable to build with paged attention")
-                .map_err(|e| ProviderError::Other(
-                    format!("Failed to configure paged attention for model '{}': {:?}", model_name, e)
-                ))?;
+                .map_err(|e| {
+                    ProviderError::Other(format!(
+                        "Failed to configure paged attention for model '{}': {:?}",
+                        model_name, e
+                    ))
+                })?;
 
-            builder.build()
-                .await
-                .map_err(|e| ProviderError::Other(format!("Failed to load local GGUF '{}': {:?}", model_name, e)))?
+            builder.build().await.map_err(|e| {
+                ProviderError::Other(format!(
+                    "Failed to load local GGUF '{}': {:?}",
+                    model_name, e
+                ))
+            })?
         } else if model_name.contains(':') {
             // HuggingFace GGUF format: "Repo/Model-GGUF:filename.gguf"
             let parts: Vec<&str> = model_name.split(':').collect();
@@ -128,39 +139,44 @@ impl MistralRsProvider {
                     format!("Invalid HuggingFace GGUF format. Expected 'Repo/Model-GGUF:file.gguf', got '{}'" , model_name)
                 ));
             }
-            
+
             let builder = GgufModelBuilder::new(parts[0], vec![parts[1]])
                 .with_logging()
                 .with_throughput_logging();
 
-            builder.build()
-                .await
-                .map_err(|e| ProviderError::Other(
-                    format!("Failed to load GGUF '{}' from HuggingFace: {:?}", model_name, e)
-                ))?
+            builder.build().await.map_err(|e| {
+                ProviderError::Other(format!(
+                    "Failed to load GGUF '{}' from HuggingFace: {:?}",
+                    model_name, e
+                ))
+            })?
         } else {
             // HuggingFace model (download and quantize on load)
             let mut builder = TextModelBuilder::new(&model_name)
                 .with_isq(IsqType::Q4K) // 4-bit quantization
                 .with_logging()
                 .with_throughput_logging();
-            
-            builder = builder.with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
-                .context("Unable to build with paged attention")
-                .map_err(|e| ProviderError::Other(
-                    format!("Failed to configure paged attention for model '{}': {:?}", model_name, e)
-                ))?;
 
-            builder.build()
-                .await
-                .map_err(|e| ProviderError::Other(
-                    format!("Failed to load model '{}' from HuggingFace: {:?}", model_name, e)
-                ))?
+            builder = builder
+                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
+                .context("Unable to build with paged attention")
+                .map_err(|e| {
+                    ProviderError::Other(format!(
+                        "Failed to configure paged attention for model '{}': {:?}",
+                        model_name, e
+                    ))
+                })?;
+
+            builder.build().await.map_err(|e| {
+                ProviderError::Other(format!(
+                    "Failed to load model '{}' from HuggingFace: {:?}",
+                    model_name, e
+                ))
+            })?
         };
 
         Ok(model)
     }
-
 }
 
 #[async_trait]
@@ -172,7 +188,7 @@ impl Provider for MistralRsProvider {
     ) -> Result<()> {
         // Build messages using TextMessages builder
         let mut messages = TextMessages::new();
-        
+
         for msg in &request.messages {
             let role = match msg.role.as_str() {
                 "system" => TextMessageRole::System,
@@ -181,7 +197,7 @@ impl Provider for MistralRsProvider {
                 "tool" => TextMessageRole::Tool,
                 _ => TextMessageRole::User,
             };
-            
+
             messages = messages.add_message(role, &msg.content);
         }
 
@@ -192,8 +208,11 @@ impl Provider for MistralRsProvider {
         // Tool calls are returned in the response for nucleus to execute
         if self.registry.get_count() > 0 {
             let plugins = self.registry.all();
-            info!(plugin_count = plugins.len(), "Converting plugins to mistral.rs tools");
-            
+            info!(
+                plugin_count = plugins.len(),
+                "Converting plugins to mistral.rs tools"
+            );
+
             let mistral_tools: Vec<MistralTool> = plugins
                 .iter()
                 .map(|plugin| {
@@ -204,7 +223,7 @@ impl Provider for MistralRsProvider {
                         "Processing plugin"
                     );
                     debug!(parameters = ?schema, "Plugin parameter schema");
-                    
+
                     // Extract properties from JSON Schema format
                     // Input: {"type": "object", "properties": {"path": {...}}, "required": [...]}
                     // Output: HashMap<String, Value> of just the properties
@@ -224,7 +243,7 @@ impl Provider for MistralRsProvider {
                         debug!("No properties field in schema, using as-is");
                         serde_json::from_value(schema).ok()
                     };
-                    
+
                     MistralTool {
                         tp: ToolType::Function,
                         function: Function {
@@ -235,26 +254,33 @@ impl Provider for MistralRsProvider {
                     }
                 })
                 .collect();
-            
-            info!(tool_count = mistral_tools.len(), "Setting tools with ToolChoice::Auto");
-            builder = builder.set_tools(mistral_tools).set_tool_choice(ToolChoice::Auto);
+
+            info!(
+                tool_count = mistral_tools.len(),
+                "Setting tools with ToolChoice::Auto"
+            );
+            builder = builder
+                .set_tools(mistral_tools)
+                .set_tool_choice(ToolChoice::Auto);
         }
 
         // Stream request
         let timeout_duration = std::time::Duration::from_secs(60);
-        let mut stream = tokio::time::timeout(
-            timeout_duration,
-            self.model.stream_chat_request(builder)
-        )
-        .await
-        .map_err(|_| {
-            warn!(timeout_secs = timeout_duration.as_secs(), "Stream creation timed out");
-            ProviderError::Other(
-                format!("Stream creation timed out after {} seconds.", timeout_duration.as_secs())
-            )
-        })?
-        .map_err(|e| ProviderError::Other(format!("Failed to create stream: {:?}", e)))?;
-        
+        let mut stream =
+            tokio::time::timeout(timeout_duration, self.model.stream_chat_request(builder))
+                .await
+                .map_err(|_| {
+                    warn!(
+                        timeout_secs = timeout_duration.as_secs(),
+                        "Stream creation timed out"
+                    );
+                    ProviderError::Other(format!(
+                        "Stream creation timed out after {} seconds.",
+                        timeout_duration.as_secs()
+                    ))
+                })?
+                .map_err(|e| ProviderError::Other(format!("Failed to create stream: {:?}", e)))?;
+
         let mut accumulated_content = String::new();
         let mut final_tool_calls = None;
         let mut message_role = String::from("assistant"); // Default, will be updated from stream
@@ -266,22 +292,28 @@ impl Provider for MistralRsProvider {
             let chunk_opt = tokio::time::timeout(chunk_timeout, next_fut)
                 .await
                 .map_err(|_| {
-                    warn!("Stream chunk timed out after {} seconds", chunk_timeout.as_secs());
-                    ProviderError::Other(
-                        format!("No response chunk received after {} seconds. Generation stalled.", chunk_timeout.as_secs())
-                    )
+                    warn!(
+                        "Stream chunk timed out after {} seconds",
+                        chunk_timeout.as_secs()
+                    );
+                    ProviderError::Other(format!(
+                        "No response chunk received after {} seconds. Generation stalled.",
+                        chunk_timeout.as_secs()
+                    ))
                 })?;
-            let Some(chunk) = chunk_opt else { break; };
+            let Some(chunk) = chunk_opt else {
+                break;
+            };
             match chunk {
                 Response::Chunk(resp) => {
                     if let Some(choice) = resp.choices.first() {
                         // Capture role from stream
                         message_role = choice.delta.role.clone();
-                        
+
                         // Stream content incrementally
                         if let Some(content) = &choice.delta.content {
                             accumulated_content.push_str(content);
-                            
+
                             // Send incremental update to callback
                             callback(ChatResponse {
                                 model: self.model_name.clone(),
@@ -296,7 +328,7 @@ impl Provider for MistralRsProvider {
                                 },
                             });
                         }
-                        
+
                         // Capture tool calls if present
                         if let Some(tcs) = &choice.delta.tool_calls {
                             final_tool_calls = Some(
@@ -339,15 +371,22 @@ impl Provider for MistralRsProvider {
 
     async fn embed(&self, text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {
         // Lazy load embedding model on first use
-        let embedding_model = self.embedding_model
+        let embedding_model = self
+            .embedding_model
             .get_or_try_init(|| async {
-                let model_path: String  = match &self.config.rag.embedding_model.path {
+                let model_path: String = match &self.config.rag.embedding_model.path {
                     Some(path) => path.to_string_lossy().into(),
-                    None => self.config.rag.embedding_model.hf_repo.clone().unwrap_or("Nucleus Registry".to_string())
+                    None => self
+                        .config
+                        .rag
+                        .embedding_model
+                        .hf_repo
+                        .clone()
+                        .unwrap_or("Nucleus Registry".to_string()),
                 };
 
                 info!("Loading embedding model from: {}", model_path);
-                
+
                 let model = EmbeddingModelBuilder::new(model_path.clone())
                     .with_logging()
                     .with_throughput_logging()
@@ -355,24 +394,23 @@ impl Provider for MistralRsProvider {
                     .build()
                     .await
                     .map_err(|e| {
-                        ProviderError::Other(
-                            format!("Failed to load embedding model from '{}': {:?}\n\n\
-                                Make sure the model exists at that path.", model_path, e)
-                        )
+                        ProviderError::Other(format!(
+                            "Failed to load embedding model from '{}': {:?}\n\n\
+                                Make sure the model exists at that path.",
+                            model_path, e
+                        ))
                     })?;
-                
+
                 Ok::<Arc<Model>, ProviderError>(Arc::new(model))
             })
             .await?;
-        
+
         // Generate embedding
         let embedding = embedding_model
             .generate_embedding(text)
             .await
-            .map_err(|e| ProviderError::Other(
-                format!("Failed to generate embedding: {:?}", e)
-            ))?;
-        
+            .map_err(|e| ProviderError::Other(format!("Failed to generate embedding: {:?}", e)))?;
+
         Ok(embedding)
     }
 }
