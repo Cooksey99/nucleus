@@ -248,18 +248,40 @@ int coreml_predict_stateful(CoreMLModelRef model_ref, CoreMLModelRef state_ref,
     }
 
     MLMultiArray *outputArray = outputFeature.multiArrayValue;
-    size_t copySize = output_size < (size_t)outputArray.count
-                          ? output_size
-                          : (size_t)outputArray.count;
+    NSArray<NSNumber *> *outputShape = outputArray.shape;
+    
+    // Output shape is typically [1, seq_len, vocab_size]
+    // We need logits for the last token: [0, seq_len-1, :]
+    size_t vocab_size = output_size;
+    size_t seq_len = input_ids_size;
+    size_t last_token_offset = 0;
+    
+    if (outputShape.count >= 3) {
+      // Shape: [batch, seq_len, vocab_size]
+      size_t batch_size = [outputShape[0] unsignedLongValue];
+      seq_len = [outputShape[1] unsignedLongValue];
+      vocab_size = [outputShape[2] unsignedLongValue];
+      last_token_offset = (seq_len - 1) * vocab_size;
+    } else if (outputShape.count == 2) {
+      // Shape: [seq_len, vocab_size]
+      seq_len = [outputShape[0] unsignedLongValue];
+      vocab_size = [outputShape[1] unsignedLongValue];
+      last_token_offset = (seq_len - 1) * vocab_size;
+    } else {
+      // Flat array, assume it's just vocab_size
+      vocab_size = (size_t)outputArray.count;
+    }
+    
+    size_t copySize = vocab_size < output_size ? vocab_size : output_size;
 
     if (outputArray.dataType == MLMultiArrayDataTypeFloat16) {
       __fp16 *src = (__fp16 *)outputArray.dataPointer;
       for (size_t i = 0; i < copySize; i++) {
-        output_data[i] = (float)src[i];
+        output_data[i] = (float)src[last_token_offset + i];
       }
     } else if (outputArray.dataType == MLMultiArrayDataTypeFloat32) {
       float *src = (float *)outputArray.dataPointer;
-      memcpy(output_data, src, copySize * sizeof(float));
+      memcpy(output_data, src + last_token_offset, copySize * sizeof(float));
     } else {
       NSLog(@"[CoreML] Error: Unsupported output data type");
       return -7;
