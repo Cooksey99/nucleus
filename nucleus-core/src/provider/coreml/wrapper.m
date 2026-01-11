@@ -129,14 +129,28 @@ int coreml_predict_multiarray(CoreMLModelRef model_ref, const char *input_name,
   }
 }
 
-// Dummy state APIs so Rust FFI links; they don’t use MLState at all on this
-// SDK.
-
 CoreMLModelRef coreml_make_state(CoreMLModelRef model_ref) {
   @autoreleasepool {
-    NSLog(@"[CoreML] coreml_make_state: MLState-based APIs not available in "
-          @"this MLModel.h; returning NULL");
-    return NULL;
+    if (!model_ref) {
+      NSLog(@"[CoreML] coreml_make_state: NULL model reference");
+      return NULL;
+    }
+
+    MLModel *model = (__bridge MLModel *)model_ref;
+    
+    if (@available(macOS 14.0, *)) {
+      NSError *error = nil;
+      MLState *state = [model newState];
+      if (!state) {
+        NSLog(@"[CoreML] coreml_make_state: Failed to create state");
+        return NULL;
+      }
+      NSLog(@"[CoreML] coreml_make_state: Created MLState successfully");
+      return (__bridge_retained void *)state;
+    } else {
+      NSLog(@"[CoreML] coreml_make_state: MLState APIs require macOS 14.0+");
+      return NULL;
+    }
   }
 }
 
@@ -146,7 +160,8 @@ void coreml_free_state(CoreMLModelRef state_ref) {
   }
 }
 
-int coreml_predict_stateful(CoreMLModelRef model_ref, const int32_t *input_ids,
+int coreml_predict_stateful(CoreMLModelRef model_ref, CoreMLModelRef state_ref,
+                            const int32_t *input_ids,
                             size_t input_ids_size, const float *causal_mask,
                             size_t mask_size, float *output_data,
                             size_t output_size) {
@@ -204,9 +219,22 @@ int coreml_predict_stateful(CoreMLModelRef model_ref, const int32_t *input_ids,
       return -4;
     }
 
-    id<MLFeatureProvider> prediction =
-        [model predictionFromFeatures:inputProvider
-                                error:&error]; // no state path
+    id<MLFeatureProvider> prediction = nil;
+    
+    if (@available(macOS 14.0, *)) {
+      if (state_ref) {
+        MLState *state = (__bridge MLState *)state_ref;
+        prediction = [model predictionFromFeatures:inputProvider
+                                        usingState:state
+                                             error:&error];
+      } else {
+        prediction = [model predictionFromFeatures:inputProvider
+                                             error:&error];
+      }
+    } else {
+      prediction = [model predictionFromFeatures:inputProvider
+                                           error:&error];
+    }
 
     if (error || !prediction) {
       NSLog(@"[CoreML] Prediction error: %@", error.localizedDescription);

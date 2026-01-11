@@ -1,6 +1,5 @@
-use nucleus_core::{Config, provider::coreml::CoreMLProvider};
+use nucleus_core::{Config, provider::{coreml::CoreMLProvider, ChatRequest, Message}};
 use nucleus_plugin::{Permission, PluginRegistry};
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -23,35 +22,37 @@ async fn main() {
     
     println!("Model loaded successfully!");
     
-    // Get input shape
-    match provider.get_input_shape(4) {
-        Ok(shape) => {
-            println!("Input shape: {:?}", shape);
-            
-            // Create dummy input with correct shape
-            let input_size: usize = shape.iter().map(|&d| d as usize).product();
-            println!("Input size: {}", input_size);
-            
-            if input_size > 0 && input_size < 10000000 {
-                let input = vec![0.5f32; input_size];
-                let mut output = vec![0.0f32; input_size];
-                
-                println!("Running prediction...");
-                match provider.predict(&input, &mut output) {
-                    Ok(_) => {
-                        println!("Prediction succeeded!");
-                        println!("Output sample (first 10 values): {:?}", &output[..10.min(output.len())]);
-                    }
-                    Err(e) => {
-                        eprintln!("Prediction failed: {}", e);
-                    }
-                }
-            } else {
-                println!("Input size is too large or invalid for testing");
+    let messages = vec![
+        Message {
+            role: "user".to_string(),
+            content: "What is 2+2?".to_string(),
+            context: None,
+        },
+    ];
+    
+    let request = ChatRequest {
+        messages,
+        temperature: 0.0,
+        top_p: 0.9,
+        max_tokens: Some(100),
+        stop_sequences: None,
+    };
+    
+    println!("Running chat inference...");
+    
+    use nucleus_core::provider::Provider;
+    let result = provider
+        .chat(request, Box::new(|response| {
+            if let Some(token) = response.content {
+                print!("{}", token);
             }
-        }
-        Err(e) => {
-            eprintln!("Failed to get input shape: {}", e);
-        }
+        }))
+        .await;
+    
+    println!();
+    
+    match result {
+        Ok(_) => println!("\nChat completed successfully!"),
+        Err(e) => eprintln!("\nChat failed: {}", e),
     }
 }
