@@ -5,7 +5,6 @@
 use nucleus_core::{ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 use nucleus_std::WriteFilePlugin;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -21,8 +20,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::load_or_default();
 
-    // Create registry with WRITE permission (required for WriteFilePlugin)
-    let registry = PluginRegistry::new(Permission::READ_WRITE);
+    let mut registry = PluginRegistry::new(Permission::READ_WRITE);
     registry.register(WriteFilePlugin::new());
 
 

@@ -17,11 +17,11 @@ pub struct PluginRegistry {
 
 impl PluginRegistry {
     /// Create a new plugin registry with the given permissions.
-    pub fn new(granted_permissions: Permission) -> Arc<Self> {
-        Arc::new(Self {
+    pub fn new(granted_permissions: Permission) -> Self {
+        Self {
             plugins: HashMap::new(),
             granted_permissions,
-        })
+        }
     }
 
     /// Register a plugin if permissions allow.
@@ -114,16 +114,16 @@ mod tests {
     #[test]
     fn test_registry_permissions() {
         let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-        let plugin = Arc::new(TestPlugin);
+        let plugin = TestPlugin;
 
-        assert!(registry.register(plugin.clone()));
+        assert!(registry.register(plugin));
         assert!(registry.get("test").is_some());
     }
 
     #[test]
     fn test_registry_permission_denial() {
         let mut registry = PluginRegistry::new(Permission::NONE);
-        let plugin = Arc::new(TestPlugin);
+        let plugin = TestPlugin;
 
         assert!(!registry.register(plugin));
         assert!(registry.get("test").is_none());

@@ -487,6 +487,7 @@ impl ChatManager {
             .all()
             .iter()
             .map(|plugin| {
+                let plugin = plugin.lock().expect("Unable to get plugin from mutex");
                 let spec = plugin.parameter_schema();
                 Tool {
                     tool_type: "function".to_string(),
@@ -554,7 +555,7 @@ impl ChatManagerBuilder {
     /// Creates a new builder with the given config and registry.
     pub fn new() -> Self {
         let config = Config::default();
-        let registry = PluginRegistry::new(Permission::NONE);
+        let registry = Arc::new(PluginRegistry::new(Permission::NONE));
         Self {
             config,
             registry,
