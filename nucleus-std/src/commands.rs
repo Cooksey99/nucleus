@@ -2,27 +2,27 @@ use async_trait::async_trait;
 use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
 use serde::Deserialize;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 use tokio::process::Command;
 
 #[derive(Debug, Deserialize)]
 pub struct ExecParams {
+    /// Full command string
     command: String,
+    /// Current working directory
     #[serde(default)]
-    args: Vec<String>,
-    cwd: PathBuf,
+    cwd: Option<PathBuf>,
+    /// Environment variables
+    #[serde(default)]
+    env: HashMap<String, String>
 }
 
 pub struct ExecPlugin {
-    /// Allow potentially dangerous or risky commands to be executed
-    allow_dangerous: bool,
 }
 
 impl ExecPlugin {
     pub fn new() -> Self {
-        Self {
-            allow_dangerous: false,
-        }
+        Self {}
     }
 
     pub async fn run(
@@ -81,11 +81,12 @@ impl Plugin for ExecPlugin {
         let params: ExecParams = serde_json::from_value(input)
             .map_err(|e| PluginError::InvalidInput(format!("Invalid parameters: {}", e)))?;
 
-        // Do security checks
-
         let mut command = Command::new(&params.command);
-        command.args(&params.args);
-        command.current_dir(&params.cwd);
+        command.envs(&params.env);
+        if params.cwd.is_some() {
+            command.current_dir(&params.cwd.unwrap_or_default());
+        }
+        
 
         let output = match command.output().await {
             Ok(res) => {
