@@ -6,8 +6,7 @@ mod aggregator;
 mod macos;
 
 pub use types::{
-    MetricsSnapshot, PerformanceMetrics, ResourceUsage, TimingMetrics, 
-    MetricsConfig, AcceleratorType, AcceleratorMetrics
+    MetricsSnapshot, PerformanceMetrics, ResourceUsage, MetricsConfig
 };
 pub use collector::MetricsCollector;
 pub use aggregator::MetricsAggregator;

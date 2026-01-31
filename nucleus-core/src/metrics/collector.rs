@@ -1,5 +1,5 @@
 use crate::metrics::types::{MetricsSnapshot, ResourceUsage};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub trait MetricsCollector: Send + Sync {
     fn collect(&self) -> anyhow::Result<ResourceUsage>;
