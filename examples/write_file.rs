@@ -5,7 +5,6 @@
 use nucleus_core::{ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 use nucleus_std::WriteFilePlugin;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -21,13 +20,14 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::load_or_default();
 
-    // Create registry with WRITE permission (required for WriteFilePlugin)
     let mut registry = PluginRegistry::new(Permission::READ_WRITE);
-    registry.register(Arc::new(WriteFilePlugin::new()));
-    let registry = registry;
+    registry.register(WriteFilePlugin::new());
+
 
     // Use the local Q4_K_M GGUF from Ollama's blob storage
-    let manager = ChatManager::builder(config, registry)
+    let manager = ChatManager::builder()
+        .with_config(config)
+        .with_registry(registry)
         .with_llm_model("Qwen/Qwen3-8B")
         .build()
         .await?;

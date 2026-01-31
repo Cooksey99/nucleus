@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load_or_default();
 
     let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-    registry.register(Arc::new(ReadFilePlugin::new()));
+    registry.register(ReadFilePlugin::new());
 
     let manager = ChatManager::new(config, registry).await?;
 

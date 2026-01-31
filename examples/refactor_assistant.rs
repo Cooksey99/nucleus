@@ -44,12 +44,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut registry = PluginRegistry::new(Permission::READ_WRITE);
 
     // Step 3: Register plugins (tools the LLM can use)
-    registry.register(Arc::new(ReadFilePlugin::new()));
-    registry.register(Arc::new(WriteFilePlugin::new()));
+    registry.register(ReadFilePlugin::new());
+    registry.register(WriteFilePlugin::new());
 
     println!("Registered plugins:");
     for plugin in registry.all() {
-        println!("  - {}: {}", plugin.name(), plugin.description());
+        println!("  - {}: {}", plugin.lock().unwrap().name(), plugin.lock().unwrap().description());
     }
     println!();
 

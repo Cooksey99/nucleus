@@ -2,27 +2,28 @@ use async_trait::async_trait;
 use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
 use serde::Deserialize;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 use tokio::process::Command;
+use schemars::{schema_for, JsonSchema};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExecParams {
+    /// The shell command to execute (e.g. "git status", "ls -la")
     command: String,
+    /// Current working directory for command execution. Defaults to current directory if not specied.
     #[serde(default)]
-    args: Vec<String>,
-    cwd: PathBuf,
+    cwd: Option<PathBuf>,
+    /// Additional environment variables to set for this command
+    #[serde(default)]
+    env: HashMap<String, String>
 }
 
 pub struct ExecPlugin {
-    /// Allow potentially dangerous or risky commands to be executed
-    allow_dangerous: bool,
 }
 
 impl ExecPlugin {
     pub fn new() -> Self {
-        Self {
-            allow_dangerous: false,
-        }
+        Self {}
     }
 
     pub async fn run(
@@ -52,25 +53,8 @@ impl Plugin for ExecPlugin {
     }
 
     fn parameter_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "required": ["command", "cwd"],
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "Command to execute (e.g., 'git', 'grep', 'ls')"
-                },
-                "args": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Command arguments"
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "Working directory"
-                }
-            }
-        })
+        let schema = schema_for!(ExecParams);
+        serde_json::to_value(schema).unwrap_or_default()
     }
 
     fn required_permission(&self) -> Permission {
@@ -81,11 +65,12 @@ impl Plugin for ExecPlugin {
         let params: ExecParams = serde_json::from_value(input)
             .map_err(|e| PluginError::InvalidInput(format!("Invalid parameters: {}", e)))?;
 
-        // Do security checks
-
         let mut command = Command::new(&params.command);
-        command.args(&params.args);
-        command.current_dir(&params.cwd);
+        command.envs(&params.env);
+        if params.cwd.is_some() {
+            command.current_dir(&params.cwd.unwrap_or_default());
+        }
+        
 
         let output = match command.output().await {
             Ok(res) => {

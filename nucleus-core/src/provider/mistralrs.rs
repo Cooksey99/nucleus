@@ -216,6 +216,7 @@ impl Provider for MistralRsProvider {
             let mistral_tools: Vec<MistralTool> = plugins
                 .iter()
                 .map(|plugin| {
+                    let plugin = plugin.lock().expect("Unable to get plugin from mutex");
                     let schema = plugin.parameter_schema();
                     debug!(
                         tool_name = %plugin.name(),
