@@ -3,19 +3,24 @@ use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use schemars::{JsonSchema, schema_for};
 
 /// Plugin for reading file contents.
 pub struct ReadFilePlugin;
 pub struct WriteFilePlugin;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 struct ReadFileParams {
+    /// Absolute or relative path to the file to read
     path: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 struct WriteFileParams {
-    path: String,
+    /// Absolute or relative path to the file to write to
+    #[serde(default)]
+    path: PathBuf,
+    /// Content to write to the file
     content: String,
 }
 
@@ -49,16 +54,8 @@ impl Plugin for ReadFilePlugin {
     }
 
     fn parameter_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "required": ["path"],
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Absolute or relative path to the file to read"
-                }
-            }
-        })
+        let schema = schema_for!(ReadFileParams);
+        serde_json::to_value(schema).unwrap_or_default()
     }
 
     fn required_permission(&self) -> Permission {
@@ -94,20 +91,8 @@ impl Plugin for WriteFilePlugin {
     }
 
     fn parameter_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "required": ["path", "content"],
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Absolute or relative path to the file to write to"
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Content to write to the file"
-                }
-            }
-        })
+        let schema = schema_for!(WriteFileParams);
+        serde_json::to_value(schema).unwrap_or_default()
     }
 
     fn required_permission(&self) -> Permission {
