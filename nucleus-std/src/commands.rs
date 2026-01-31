@@ -4,15 +4,16 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::process::Command;
+use schemars::{schema_for, JsonSchema};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExecParams {
-    /// Full command string
+    /// The shell command to execute (e.g. "git status", "ls -la")
     command: String,
-    /// Current working directory
+    /// Current working directory for command execution. Defaults to current directory if not specied.
     #[serde(default)]
     cwd: Option<PathBuf>,
-    /// Environment variables
+    /// Additional environment variables to set for this command
     #[serde(default)]
     env: HashMap<String, String>
 }
@@ -52,25 +53,8 @@ impl Plugin for ExecPlugin {
     }
 
     fn parameter_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "required": ["command", "cwd"],
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "Command to execute (e.g., 'git', 'grep', 'ls')"
-                },
-                "args": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Command arguments"
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "Working directory"
-                }
-            }
-        })
+        let schema = schema_for!(ExecParams);
+        serde_json::to_value(schema).unwrap_or_default()
     }
 
     fn required_permission(&self) -> Permission {
