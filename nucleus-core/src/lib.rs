@@ -14,6 +14,7 @@
 pub mod chat;
 pub mod config;
 pub mod detection;
+pub mod metrics;
 pub mod models;
 pub mod patterns;
 pub mod provider;
