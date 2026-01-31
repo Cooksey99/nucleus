@@ -6,19 +6,27 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::path::PathBuf;
 use walkdir::WalkDir;
+use schemars::{JsonSchema, schema_for};
 
 pub struct SearchPlugin;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 struct SearchParams {
+    /// Text or regex pattern to search for
     query: String,
+    /// Directory to search in (defaults to current directory)
+    #[serde(default)]
     path: Option<String>,
+    /// Treat query as a regex pattern instead of literal text
     #[serde(default)]
     regex: bool,
+    /// Perform case-sensitive matching
     #[serde(default)]
     case_sensitive: bool,
+    /// Maximum number of results to return (default: 100)
     #[serde(default = "default_max_results")]
     max_results: usize,
+    /// Patterns to exclude from search (e.g., "node_modules", "*.log")
     #[serde(default = "default_exclude_patterns")]
     exclude_patterns: Vec<String>,
 }
@@ -47,35 +55,8 @@ impl Plugin for SearchPlugin {
     }
 
     fn parameter_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "required": ["query"],
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Text or regex pattern to search for"
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Directory to search in (defaults to current directory)"
-                },
-                "regex": {
-                    "type": "boolean",
-                    "description": "Treat query as regex pattern",
-                    "default": false
-                },
-                "case_sensitive": {
-                    "type": "boolean",
-                    "description": "Case sensitive search",
-                    "default": false
-                },
-                "max_results": {
-                    "type": "number",
-                    "description": "Maximum number of results to return",
-                    "default": 100
-                }
-            }
-        })
+        let schema = schema_for!(SearchParams);
+        serde_json::to_value(schema).unwrap()
     }
 
     fn required_permission(&self) -> Permission {
