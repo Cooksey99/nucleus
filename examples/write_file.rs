@@ -21,10 +21,10 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::load_or_default();
 
-    let mut registry = PluginRegistry::new(Permission::READ_WRITE);
-    Arc::get_mut(&mut registry)
-        .unwrap()
-        .register(Arc::new(WriteFilePlugin::new()));
+    // Create registry with WRITE permission (required for WriteFilePlugin)
+    let registry = PluginRegistry::new(Permission::READ_WRITE);
+    registry.register(WriteFilePlugin::new());
+
 
     // Use the local Q4_K_M GGUF from Ollama's blob storage
     let manager = ChatManager::builder()

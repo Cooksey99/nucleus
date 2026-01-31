@@ -1,7 +1,7 @@
 use crate::{Permission, Plugin, PluginError, PluginOutput};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Registry for managing plugins.
 ///
@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// - Executing plugins
 /// - Providing plugin specifications to the LLM
 pub struct PluginRegistry {
-    plugins: HashMap<String, Arc<dyn Plugin>>,
+    plugins: HashMap<String, Arc<Mutex<dyn Plugin + Send + Sync>>>,
     granted_permissions: Permission,
 }
 
@@ -26,14 +26,15 @@ impl PluginRegistry {
 
     /// Register a plugin if permissions allow.
     /// Returns true if the plugin was registered, false if denied by permissions.
-    pub fn register(&mut self, plugin: Arc<dyn Plugin>) -> bool {
+    pub fn register<T: Plugin + 'static>(&mut self, plugin: T) -> bool {
         let required = plugin.required_permission();
+        let plugin = Arc::new(Mutex::new(plugin));
 
         if !self.granted_permissions.allows(&required) {
             return false;
         }
 
-        self.plugins.insert(plugin.name().to_string(), plugin);
+        self.plugins.insert(plugin.lock().expect("Plugin error").name().to_string(), plugin.clone());
         true
     }
 
@@ -43,12 +44,12 @@ impl PluginRegistry {
     }
 
     /// Get a plugin by name.
-    pub fn get(&self, name: &str) -> Option<&Arc<dyn Plugin>> {
+    pub fn get(&self, name: &str) -> Option<&Arc<Mutex<dyn Plugin + Send + Sync>>> {
         self.plugins.get(name)
     }
 
     /// Get all registered plugins.
-    pub fn all(&self) -> Vec<&Arc<dyn Plugin>> {
+    pub fn all(&self) -> Vec<&Arc<Mutex<dyn Plugin + Send + Sync>>> {
         self.plugins.values().collect()
     }
 
@@ -58,7 +59,7 @@ impl PluginRegistry {
             .get(name)
             .ok_or_else(|| PluginError::Other(format!("Unknown plugin: {}", name)))?;
 
-        plugin.execute(input).await
+        plugin.lock().expect("Error with plugin lock").execute(input).await
     }
 
     /// Get plugin specifications for the LLM.
@@ -66,7 +67,10 @@ impl PluginRegistry {
     pub fn plugin_specs(&self) -> Vec<Value> {
         self.plugins
             .values()
-            .map(|plugin| {
+            .map(|plugin|
+                {
+                let plugin = plugin.lock().expect("Unable to extract plugin value in plugins map");
+
                 serde_json::json!({
                     "name": plugin.name(),
                     "description": plugin.description(),
