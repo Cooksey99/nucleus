@@ -76,6 +76,7 @@ use tracing::{debug, info};
 /// - Tool calls arrive in streaming chunks and must be preserved across chunks
 /// - The conversation loop continues until the LLM returns a non-tool response
 /// - All conversation history is maintained for context
+#[derive(Debug)]
 pub struct ChatManager {
     /// Nucleus core configuration
     config: Config,

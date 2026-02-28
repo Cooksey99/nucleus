@@ -24,7 +24,7 @@ futures.workspace = true
 anyhow.workspace = true
 nucleus-plugin = { path = "../nucleus-plugin" }
 # mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", default-features = false }
-mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", rev = "36e99b1c5ad56d610e6640cafbbdaaca7f153036", default-features = false }
+mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", rev = "2a10942d89c17d2c33282f9c7cf97293f7bc271e", default-features = false }
 async-trait.workspace = true
 tracing = "0.1.43"
 qdrant-client = { version = "1.11", default-features = false, features = ["serde"] }
