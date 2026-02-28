@@ -39,6 +39,7 @@ use nucleus_plugin::{Permission, PluginRegistry};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
+use futures::future::join_all;
 
 /// Manages multi-turn conversations with tool-augmented LLM capabilities.
 ///
@@ -76,7 +77,6 @@ use tracing::{debug, info};
 /// - Tool calls arrive in streaming chunks and must be preserved across chunks
 /// - The conversation loop continues until the LLM returns a non-tool response
 /// - All conversation history is maintained for context
-#[derive(Debug, Copy)]
 pub struct ChatManager {
     /// Nucleus core configuration
     config: Config,
@@ -382,7 +382,7 @@ impl ChatManager {
 
         let mut messages = vec![Message::user(Some(context.clone()), &enhanced_message)];
 
-        let tools = self.build_tools();
+        let tools = self.build_tools().await;
 
         loop {
             let mut request = ChatRequest::new(&self.config.llm.model, messages.clone())
@@ -483,12 +483,12 @@ impl ChatManager {
     ///
     /// This method is called once at the start of each query. Tools are
     /// included in every LLM request throughout the conversation loop.
-    fn build_tools(&self) -> Vec<Tool> {
-        self.registry
+    async fn build_tools(&self) -> Vec<Tool> {
+        join_all(self.registry
             .all()
             .iter()
-            .map(|plugin| {
-                let plugin = plugin.lock().expect("Unable to get plugin from mutex");
+            .map(async move |plugin| {
+                let plugin = plugin.lock().await;
                 let spec = plugin.parameter_schema();
                 Tool {
                     tool_type: "function".to_string(),
@@ -498,8 +498,7 @@ impl ChatManager {
                         parameters: spec,
                     },
                 }
-            })
-            .collect()
+            })).await
     }
 }
 

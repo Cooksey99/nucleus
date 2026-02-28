@@ -7,7 +7,6 @@ use crate::models::EmbeddingModel;
 use crate::Config;
 
 use super::types::*;
-use anyhow::Context;
 use async_trait::async_trait;
 use mistralrs::{
     EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, PagedAttentionMetaBuilder,
@@ -20,6 +19,7 @@ use tracing::{debug, info, warn};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
+use futures::future::join_all;
 
 /// mistral.rs in-process provider.
 ///
@@ -116,14 +116,7 @@ impl MistralRsProvider {
             let builder = GgufModelBuilder::new(dir, vec![filename])
                 .with_logging()
                 .with_throughput_logging()
-                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
-                .context("Unable to build with paged attention")
-                .map_err(|e| {
-                    ProviderError::Other(format!(
-                        "Failed to configure paged attention for model '{}': {:?}",
-                        model_name, e
-                    ))
-                })?;
+                .with_paged_attn(PagedAttentionMetaBuilder::default().build().unwrap());
 
             builder.build().await.map_err(|e| {
                 ProviderError::Other(format!(
@@ -158,14 +151,7 @@ impl MistralRsProvider {
                 .with_throughput_logging();
 
             builder = builder
-                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
-                .context("Unable to build with paged attention")
-                .map_err(|e| {
-                    ProviderError::Other(format!(
-                        "Failed to configure paged attention for model '{}': {:?}",
-                        model_name, e
-                    ))
-                })?;
+                .with_paged_attn( PagedAttentionMetaBuilder::default().build().unwrap());
 
             builder.build().await.map_err(|e| {
                 ProviderError::Other(format!(
@@ -213,10 +199,10 @@ impl Provider for MistralRsProvider {
                 "Converting plugins to mistral.rs tools"
             );
 
-            let mistral_tools: Vec<MistralTool> = plugins
+            let mistral_tools: Vec<MistralTool> = join_all(plugins
                 .iter()
-                .map(|plugin| {
-                    let plugin = plugin.lock().expect("Unable to get plugin from mutex");
+                .map(async move |plugin| {
+                    let plugin = plugin.lock().await;
                     let schema = plugin.parameter_schema();
                     debug!(
                         tool_name = %plugin.name(),
@@ -253,8 +239,7 @@ impl Provider for MistralRsProvider {
                             parameters,
                         },
                     }
-                })
-                .collect();
+                })).await;
 
             info!(
                 tool_count = mistral_tools.len(),

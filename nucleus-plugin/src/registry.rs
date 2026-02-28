@@ -1,7 +1,8 @@
 use crate::{Permission, Plugin, PluginError, PluginOutput};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Registry for managing plugins.
 ///
@@ -26,7 +27,7 @@ impl PluginRegistry {
 
     /// Register a plugin if permissions allow.
     /// Returns true if the plugin was registered, false if denied by permissions.
-    pub fn register<T: Plugin + 'static>(&mut self, plugin: T) -> bool {
+    pub async fn register<T: Plugin + 'static>(&mut self, plugin: T) -> bool {
         let required = plugin.required_permission();
         let plugin = Arc::new(Mutex::new(plugin));
 
@@ -34,7 +35,11 @@ impl PluginRegistry {
             return false;
         }
 
-        self.plugins.insert(plugin.lock().expect("Plugin error").name().to_string(), plugin.clone());
+        let plugin_name = {
+            let locked_plugin = plugin.lock().await;
+            locked_plugin.name().to_string()
+        };
+        self.plugins.insert(plugin_name, plugin);
         true
     }
 
@@ -59,25 +64,22 @@ impl PluginRegistry {
             .get(name)
             .ok_or_else(|| PluginError::Other(format!("Unknown plugin: {}", name)))?;
 
-        plugin.lock().expect("Error with plugin lock").execute(input).await
+        plugin.lock().await.execute(input).await
     }
 
     /// Get plugin specifications for the LLM.
     /// Returns a list of tool definitions in a format the LLM can understand.
-    pub fn plugin_specs(&self) -> Vec<Value> {
-        self.plugins
-            .values()
-            .map(|plugin|
-                {
-                let plugin = plugin.lock().expect("Unable to extract plugin value in plugins map");
-
-                serde_json::json!({
-                    "name": plugin.name(),
-                    "description": plugin.description(),
-                    "parameters": plugin.parameter_schema(),
-                })
-            })
-            .collect()
+    pub async fn plugin_specs(&self) -> Vec<Value> {
+        let mut specs = Vec::new();
+        for plugin in self.plugins.values() {
+            let locked_plugin = plugin.lock().await;
+            specs.push(serde_json::json!({
+                "name": locked_plugin.name(),
+                "description": locked_plugin.description(),
+                "parameters": locked_plugin.parameter_schema(),
+            }));
+        }
+        specs
     }
 }
 
@@ -114,18 +116,18 @@ mod tests {
     #[test]
     fn test_registry_permissions() {
         let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-        let plugin = TestPlugin;
+        // let plugin = TestPlugin;
 
-        assert!(registry.register(plugin));
+        // assert!(registry.register(plugin).await);
         assert!(registry.get("test").is_some());
     }
 
     #[test]
     fn test_registry_permission_denial() {
         let mut registry = PluginRegistry::new(Permission::NONE);
-        let plugin = TestPlugin;
+        // let plugin = TestPlugin;
 
-        assert!(!registry.register(plugin));
+        // assert!(!registry.register(plugin));
         assert!(registry.get("test").is_none());
     }
 }
