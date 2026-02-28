@@ -9,7 +9,7 @@ use crate::Config;
 use super::types::*;
 use async_trait::async_trait;
 use mistralrs::{
-    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, PagedAttentionMetaBuilder,
+    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model,
     RequestBuilder, Response, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool,
     ToolChoice, ToolType,
 };
@@ -83,7 +83,7 @@ impl MistralRsProvider {
         })
     }
 
-    async fn build_model(config: Config, registry: Arc<PluginRegistry>) -> Result<Model> {
+    async fn build_model(config: Config, _registry: Arc<PluginRegistry>) -> Result<Model> {
         let model_name = config.llm.model;
 
         // Expand tilde in path if present
@@ -115,8 +115,7 @@ impl MistralRsProvider {
 
             let builder = GgufModelBuilder::new(dir, vec![filename])
                 .with_logging()
-                .with_throughput_logging()
-                .with_paged_attn(PagedAttentionMetaBuilder::default().build().unwrap());
+                .with_throughput_logging();
 
             builder.build().await.map_err(|e| {
                 ProviderError::Other(format!(
@@ -145,13 +144,10 @@ impl MistralRsProvider {
             })?
         } else {
             // HuggingFace model (download and quantize on load)
-            let mut builder = TextModelBuilder::new(&model_name)
+            let builder = TextModelBuilder::new(&model_name)
                 .with_isq(IsqType::Q4K) // 4-bit quantization
                 .with_logging()
                 .with_throughput_logging();
-
-            builder = builder
-                .with_paged_attn( PagedAttentionMetaBuilder::default().build().unwrap());
 
             builder.build().await.map_err(|e| {
                 ProviderError::Other(format!(
