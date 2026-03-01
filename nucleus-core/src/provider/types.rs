@@ -89,7 +89,7 @@ impl ChatRequest {
             messages,
             temperature: 0.7,
             tools: None,
-            pub structured_output: None
+            structured_output: None
         }
     }
 
