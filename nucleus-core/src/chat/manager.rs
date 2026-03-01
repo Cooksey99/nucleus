@@ -151,7 +151,7 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn builder() -> ChatManagerBuilder {
+    fn builder() -> ChatManagerBuilder {
         ChatManagerBuilder::new()
     }
 

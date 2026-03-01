@@ -1,6 +1,6 @@
 // The initial indexing in this example can take a few minutes
 
-use nucleus::{ChatManager, Config};
+use nucleus::{ChatManagerBuilder, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 
 #[tokio::main]
@@ -17,7 +17,9 @@ async fn main() {
     let config = Config::load_or_default();
     let registry = PluginRegistry::new(Permission::READ_ONLY);
 
-    let manager = ChatManager::builder(config, registry)
+    let manager = ChatManagerBuilder::new()
+        .with_config(config)
+        .with_registry(registry)
         .with_llm_model("Qwen/Qwen3-8B")
         .build()
         .await

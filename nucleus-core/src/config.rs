@@ -278,6 +278,65 @@ impl Config {
     pub fn load_or_default() -> Self {
         Self::load("config.yaml").unwrap_or_default()
     }
+
+    /// Create a new Config with default values and builder-style configuration.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the LLM model identifier.
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.llm.model = model.into();
+        self
+    }
+
+    /// Set the temperature (0.0-2.0).
+    pub fn with_temperature(mut self, temperature: f64) -> Self {
+        self.llm.temperature = temperature;
+        self
+    }
+
+    /// Set the system prompt.
+    pub fn with_system_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.system_prompt = prompt.into();
+        self
+    }
+
+    /// Set the base URL for the LLM provider.
+    pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
+        self.llm.base_url = url.into();
+        self
+    }
+
+    /// Set the context length (maximum tokens).
+    pub fn with_context_length(mut self, length: usize) -> Self {
+        self.llm.context_length = length;
+        self
+    }
+
+    /// Set the LLM provider type.
+    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
+        self.llm.provider = provider.into();
+        self
+    }
+
+    /// Configure RAG settings.
+    pub fn with_rag_config(mut self, rag_config: RagConfig) -> Self {
+        self.rag = rag_config;
+        self
+    }
+
+    /// Configure storage settings.
+    pub fn with_storage_config(mut self, storage_config: StorageConfig) -> Self {
+        self.storage = storage_config;
+        self
+    }
+
+    /// Configure personalization settings.
+    pub fn with_personalization_config(mut self, personalization_config: PersonalizationConfig) -> Self {
+        self.personalization = personalization_config;
+        self
+    }
 }
 
 #[cfg(test)]
