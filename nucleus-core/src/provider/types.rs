@@ -79,6 +79,7 @@ pub struct ChatRequest {
     pub messages: Vec<Message>,
     pub temperature: f64,
     pub tools: Option<Vec<Tool>>,
+    pub structured_output: Option<StructuredOutput>,
 }
 
 impl ChatRequest {
@@ -88,7 +89,13 @@ impl ChatRequest {
             messages,
             temperature: 0.7,
             tools: None,
+            structured_output: None
         }
+    }
+
+    pub fn with_structured_output(mut self, structured_output: StructuredOutput) -> Self {
+        self.structured_output = Some(structured_output);
+        self
     }
 
     pub fn with_temperature(mut self, temperature: f64) -> Self {
@@ -212,4 +219,35 @@ pub struct EmbedResponse {
 
     #[serde(default)]
     pub embeddings: Vec<Vec<f32>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredOutput {
+    /// JSON schema to define the expected output structure
+    pub schema: serde_json::Value,
+    /// Optional description of what the structured output represents
+    pub description: Option<String>,
+    /// Optional example of the expected output format
+    ///
+    /// Adding this could improve the results
+    pub example: Option<serde_json::Value>,
+}
+
+impl StructuredOutput {
+    pub fn new(schema: serde_json::Value) -> Self {
+        Self {
+            schema,
+            description: None,
+            example: None
+        }
+    }
+
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = Some(description); self
+    }
+
+    pub fn with_example(mut self, example: serde_json::Value) -> Self {
+        self.example = Some(example);
+        self
+    }
 }
