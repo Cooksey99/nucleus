@@ -89,7 +89,7 @@ impl ChatRequest {
             messages,
             temperature: 0.7,
             tools: None,
-            structured_output: None
+            structured_output: None,
         }
     }
 
@@ -238,12 +238,13 @@ impl StructuredOutput {
         Self {
             schema,
             description: None,
-            example: None
+            example: None,
         }
     }
 
     pub fn with_description(mut self, description: String) -> Self {
-        self.description = Some(description); self
+        self.description = Some(description);
+        self
     }
 
     pub fn with_example(mut self, example: serde_json::Value) -> Self {

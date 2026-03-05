@@ -9,17 +9,16 @@ use crate::Config;
 use super::types::*;
 use async_trait::async_trait;
 use mistralrs::{
-    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model,
-    RequestBuilder, Response, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool,
-    ToolChoice, ToolType,
+    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, RequestBuilder, Response,
+    TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolChoice, ToolType,
 };
 use nucleus_plugin::PluginRegistry;
 use tracing::{debug, info, warn};
 
+use futures::future::join_all;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
-use futures::future::join_all;
 
 /// mistral.rs in-process provider.
 ///
@@ -195,9 +194,8 @@ impl Provider for MistralRsProvider {
                 "Converting plugins to mistral.rs tools"
             );
 
-            let mistral_tools: Vec<MistralTool> = join_all(plugins
-                .iter()
-                .map(async move |plugin| {
+            let mistral_tools: Vec<MistralTool> =
+                join_all(plugins.iter().map(async move |plugin| {
                     let plugin = plugin.lock().await;
                     let schema = plugin.parameter_schema();
                     debug!(
@@ -235,7 +233,8 @@ impl Provider for MistralRsProvider {
                             parameters,
                         },
                     }
-                })).await;
+                }))
+                .await;
 
             info!(
                 tool_count = mistral_tools.len(),

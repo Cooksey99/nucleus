@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
+use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::process::Command;
-use schemars::{schema_for, JsonSchema};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExecParams {
@@ -15,11 +15,10 @@ pub struct ExecParams {
     cwd: Option<PathBuf>,
     /// Additional environment variables to set for this command
     #[serde(default)]
-    env: HashMap<String, String>
+    env: HashMap<String, String>,
 }
 
-pub struct ExecPlugin {
-}
+pub struct ExecPlugin {}
 
 impl ExecPlugin {
     pub fn new() -> Self {
@@ -70,7 +69,6 @@ impl Plugin for ExecPlugin {
         if params.cwd.is_some() {
             command.current_dir(&params.cwd.unwrap_or_default());
         }
-        
 
         let output = match command.output().await {
             Ok(res) => {

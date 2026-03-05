@@ -49,7 +49,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Registered plugins:");
     for plugin in registry.all() {
-        println!("  - {}: {}", plugin.lock().unwrap().name(), plugin.lock().unwrap().description());
+        println!(
+            "  - {}: {}",
+            plugin.lock().unwrap().name(),
+            plugin.lock().unwrap().description()
+        );
     }
     println!();
 
