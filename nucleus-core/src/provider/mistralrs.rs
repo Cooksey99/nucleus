@@ -20,6 +20,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
+
 /// mistral.rs in-process provider.
 ///
 /// Automatically detects if model is:
@@ -184,6 +185,45 @@ impl Provider for MistralRsProvider {
 
         // Convert to RequestBuilder
         let mut builder = RequestBuilder::from(messages);
+
+        if let Some(structured_output) = &request.structured_output {
+            // Rebuild messages with schema instructions
+            let mut messages_with_schema = TextMessages::new();
+            
+            // Add system message with JSON schema instructions
+            let schema_instructions = format!(
+                "You MUST respond with valid JSON matching this schema:\n{}\n Do NOT wrap it in markdown code fences. Stricly return only the JSON.",
+                serde_json::to_string_pretty(&structured_output.schema).unwrap_or_default()
+            );
+            
+            // Include description if available
+            if let Some(description) = &structured_output.description {
+                messages_with_schema = messages_with_schema.add_message(
+                    TextMessageRole::System,
+                    &format!("{}\n{}", description, schema_instructions)
+                );
+            } else {
+                messages_with_schema = messages_with_schema.add_message(
+                    TextMessageRole::System,
+                    &schema_instructions
+                );
+            }
+            
+            // Add original messages
+            for msg in &request.messages {
+                let role = match msg.role.as_str() {
+                    "system" => TextMessageRole::System,
+                    "user" => TextMessageRole::User,
+                    "assistant" => TextMessageRole::Assistant,
+                    "tool" => TextMessageRole::Tool,
+                    _ => TextMessageRole::User,
+                };
+                messages_with_schema = messages_with_schema.add_message(role, &msg.content);
+            }
+            
+            // Recreate builder with schema-enhanced messages
+            builder = RequestBuilder::from(messages_with_schema);
+        }
 
         // Convert plugins to mistral.rs tool definitions
         // Tool calls are returned in the response for nucleus to execute

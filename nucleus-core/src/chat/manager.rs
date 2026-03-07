@@ -525,8 +525,10 @@ impl ChatManager {
                         on_chunk(&response.content);
                     }
 
-                    // Accumulate incremental content
-                    accumulated_content.push_str(&response.content);
+                    // Accumulate incremental content only from non-final chunks
+                    if !response.done {
+                        accumulated_content.push_str(&response.content);
+                    }
 
                     // Preserve tool calls from any chunk
                     if let Some(ref tool_calls_ref) = response.message.tool_calls {
