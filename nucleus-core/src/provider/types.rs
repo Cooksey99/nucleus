@@ -252,3 +252,9 @@ impl StructuredOutput {
         self
     }
 }
+
+impl From<serde_json::Value> for StructuredOutput {
+    fn from(schema: serde_json::Value) -> Self {
+        Self::new(schema)
+    }
+}

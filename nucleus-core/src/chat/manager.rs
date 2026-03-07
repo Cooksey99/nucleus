@@ -321,7 +321,7 @@ impl ChatManager {
     /// 4. If no tool calls, return the response
     ///
     /// The loop ensures the LLM can chain multiple tool calls if needed.
-    pub async fn query(&self, messages: Option<Vec<Message>>, user_message: &str) -> Result<String> {
+    pub async fn query(&self, messages: Option<&Vec<Message>>, user_message: &str) -> Result<String> {
         self.query_stream(messages, user_message, |_| {}).await
     }
 
@@ -363,13 +363,16 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn query_stream<F>(&self, messages: Option<Vec<Message>>, user_message: &str, on_chunk: F) -> Result<String>
+    pub async fn query_stream<F>(&self, messages: Option<&Vec<Message>>, user_message: &str, on_chunk: F) -> Result<String>
     where
         F: FnMut(&str) + Send,
     {
         let (context, messages) = match messages {
-            Some(messages) => (String::new(), messages),
-            None => self.prepare_messages(user_message).await,
+            Some(messages) => (String::new(), messages.clone()),
+            None => {
+                let (context, messages) = self.prepare_messages(user_message).await;
+                (context, messages)
+            },
         };
         let tools = self.build_tools().await;
 
@@ -390,7 +393,7 @@ impl ChatManager {
             // Handle tool calls: execute each tool and add results to conversation
             if let Some(tool_calls) = &assistant_message.tool_calls {
                 // Add the assistant's message with tool calls to conversation history
-                let mut new_messages = messages;
+                let mut new_messages = messages.clone();
                 new_messages.push(Message {
                     role: "assistant".to_string(),
                     context: Some(context.to_string()),
@@ -497,6 +500,7 @@ impl ChatManager {
         };
 
         let messages = vec![Message::user(Some(context.clone()), &enhanced_message)];
+
         (context, messages)
     }
 
