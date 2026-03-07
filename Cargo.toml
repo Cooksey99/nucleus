@@ -58,6 +58,12 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 [profile.dev.package."*"]
 opt-level = 2
 
+[profile.dev]
+recursion_limit=256
+
+[profile.release]
+recursion_limit=256
+
 [workspace.dependencies]
 # Shared dependencies across workspace
 serde = { version = "1.0", features = ["derive"] }
