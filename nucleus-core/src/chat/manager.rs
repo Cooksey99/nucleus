@@ -30,8 +30,7 @@
 use crate::config::Config;
 use crate::models::EmbeddingModel;
 use crate::provider::{
-    create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, Tool, ToolCall,
-    ToolFunction,
+    create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, StructuredOutput, Tool, ToolCall, ToolFunction 
 };
 use crate::rag::RagEngine;
 use anyhow::{Context, Result};
@@ -40,6 +39,7 @@ use nucleus_plugin::{Permission, PluginRegistry};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
+
 
 /// Manages multi-turn conversations with tool-augmented LLM capabilities.
 ///
@@ -86,6 +86,8 @@ pub struct ChatManager {
     registry: Arc<PluginRegistry>,
     /// RAG manager for knowledge base integration (with persistent storage)
     rag_engine: Arc<RagEngine>,
+    /// Optional JSON schema for forcing a structured JSON output
+    structured_output: Option<StructuredOutput>,
 }
 
 impl ChatManager {
@@ -254,6 +256,16 @@ impl ChatManager {
             .context("Failed to index directory")
     }
 
+    /// Sets the structured output for the `ChatManager`.
+    pub fn set_structured_output(&mut self, schema: serde_json::Value) {
+        self.structured_output = Some(StructuredOutput::new(schema));
+    }
+
+    /// Removed any previously set `structured_output` JSON schema from `ChatManager`
+    pub fn clear_structured_output(&mut self) {
+        self.structured_output = None;
+    }
+
     /// Sends a query to the LLM and returns the final response.
     ///
     /// This method handles the complete conversation flow including:
@@ -341,7 +353,7 @@ impl ChatManager {
     ///     print!("{}", chunk);
     ///     io::stdout().flush().unwrap();
     /// }).await?;
-    /// println!("\n\nFinal response: {}", response);
+    /// println!("Final response: {}", response);
     /// # Ok(())
     /// # }
     /// ```
@@ -360,12 +372,16 @@ impl ChatManager {
                 request.tools = Some(tools.clone());
             }
 
+            if let Some(structured_output) = &self.structured_output {
+                request = request.with_structured_output(structured_output.clone()); 
+            }
+
             let assistant_message = self.process_response_stream(request, on_chunk).await?;
 
             // Handle tool calls: execute each tool and add results to conversation
             if let Some(tool_calls) = &assistant_message.tool_calls {
                 // Add the assistant's message with tool calls to conversation history
-                let mut new_messages = messages.clone();
+                let mut new_messages = messages;
                 new_messages.push(Message {
                     role: "assistant".to_string(),
                     context: Some(context.to_string()),
@@ -404,15 +420,10 @@ impl ChatManager {
         }
     }
 
-    /// Converts registered plugins into Ollama tool definitions.
+    /// Converts registered plugins into tool definitions.
     ///
     /// Transforms plugins from the registry into the JSON schema format
-    /// expected by Ollama's tool calling API. Each plugin becomes a tool
-    /// with its name, description, and parameter schema.
-    ///
-    /// # Returns
-    ///
-    /// A vector of tool definitions to send with LLM requests.
+    /// Each plugin becomes a tool with its name, description, and parameter schema.
     ///
     /// # Note
     ///
@@ -650,6 +661,7 @@ pub struct ChatManagerBuilder {
     llm_model_override: Option<String>,
     embedding_model_override: Option<EmbeddingModel>,
     provider_type_override: Option<ProviderType>,
+    structured_output: Option<StructuredOutput> 
 }
 
 impl ChatManagerBuilder {
@@ -663,6 +675,7 @@ impl ChatManagerBuilder {
             llm_model_override: None,
             embedding_model_override: None,
             provider_type_override: None,
+            structured_output: None
         }
     }
 
@@ -811,6 +824,7 @@ impl ChatManagerBuilder {
             provider,
             registry: self.registry,
             rag_engine,
+            structured_output: self.structured_output
         })
     }
 }
