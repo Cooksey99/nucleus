@@ -59,10 +59,10 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 opt-level = 2
 
 [profile.dev]
-recursion_limit=256
+opt-level = 0
 
 [profile.release]
-recursion_limit=256
+opt-level = 3
 
 [workspace.dependencies]
 # Shared dependencies across workspace

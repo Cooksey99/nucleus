@@ -45,7 +45,7 @@ cc = "1.0"
 tempfile = "3.13"
 
 [profile.dev]
-recursion_limit=256
+opt-level = 0
 
 [profile.release]
-recursion_limit=256
+opt-level = 3
