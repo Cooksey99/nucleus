@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 //! nucleus - Privacy-first, modular AI engine
 //!
 //! This is the convenience wrapper crate that re-exports nucleus components
