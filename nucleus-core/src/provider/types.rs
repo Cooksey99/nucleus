@@ -258,3 +258,9 @@ impl From<serde_json::Value> for StructuredOutput {
         Self::new(schema)
     }
 }
+
+impl From<StructuredOutput> for serde_json::Value {
+    fn from(output: StructuredOutput) -> Self {
+        serde_json::to_value(output).unwrap_or_default()
+    }
+}
