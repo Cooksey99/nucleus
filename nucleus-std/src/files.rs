@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
+use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use schemars::{JsonSchema, schema_for};
 
 /// Plugin for reading file contents.
 pub struct ReadFilePlugin;

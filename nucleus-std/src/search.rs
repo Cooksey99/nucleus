@@ -2,11 +2,11 @@ use async_trait::async_trait;
 use nucleus_core::patterns;
 use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
 use regex::Regex;
+use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::PathBuf;
 use walkdir::WalkDir;
-use schemars::{JsonSchema, schema_for};
 
 pub struct SearchPlugin;
 

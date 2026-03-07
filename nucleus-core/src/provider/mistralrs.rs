@@ -9,17 +9,17 @@ use crate::Config;
 use super::types::*;
 use async_trait::async_trait;
 use mistralrs::{
-    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model,
-    RequestBuilder, Response, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool,
-    ToolChoice, ToolType,
+    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, RequestBuilder, Response,
+    TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolChoice, ToolType,
 };
 use nucleus_plugin::PluginRegistry;
 use tracing::{debug, info, warn};
 
+use futures::future::join_all;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
-use futures::future::join_all;
+
 
 /// mistral.rs in-process provider.
 ///
@@ -186,6 +186,53 @@ impl Provider for MistralRsProvider {
         // Convert to RequestBuilder
         let mut builder = RequestBuilder::from(messages);
 
+        if let Some(structured_output) = &request.structured_output {
+            // Rebuild messages with schema instructions
+            let mut messages_with_schema = TextMessages::new();
+            
+            // Add system message with JSON schema instructions
+            let schema_instructions = format!(
+                "You MUST respond with valid JSON matching this schema:\n{}\n Do NOT wrap it in markdown code fences. Stricly return only the JSON.",
+                serde_json::to_string_pretty(&structured_output.schema).unwrap_or_default()
+            );
+            
+            let mut system_message = String::new();
+            
+            if let Some(description) = &structured_output.description {
+                system_message.push_str(&format!("{}\n\n", description));
+            }
+            
+            if let Some(example) = &structured_output.example {
+                system_message.push_str(&format!(
+                    "Here's an example of the expected format:\n{}\n\n",
+                    serde_json::to_string_pretty(example).unwrap_or_default()
+                ));
+            }
+            
+            // Add schema instructions
+            system_message.push_str(&schema_instructions);
+            
+            messages_with_schema = messages_with_schema.add_message(
+                TextMessageRole::System,
+                &system_message
+            );
+            
+            // Add original messages
+            for msg in &request.messages {
+                let role = match msg.role.as_str() {
+                    "system" => TextMessageRole::System,
+                    "user" => TextMessageRole::User,
+                    "assistant" => TextMessageRole::Assistant,
+                    "tool" => TextMessageRole::Tool,
+                    _ => TextMessageRole::User,
+                };
+                messages_with_schema = messages_with_schema.add_message(role, &msg.content);
+            }
+            
+            // Recreate builder with schema-enhanced messages
+            builder = RequestBuilder::from(messages_with_schema);
+        }
+
         // Convert plugins to mistral.rs tool definitions
         // Tool calls are returned in the response for nucleus to execute
         if self.registry.get_count() > 0 {
@@ -195,9 +242,8 @@ impl Provider for MistralRsProvider {
                 "Converting plugins to mistral.rs tools"
             );
 
-            let mistral_tools: Vec<MistralTool> = join_all(plugins
-                .iter()
-                .map(async move |plugin| {
+            let mistral_tools: Vec<MistralTool> =
+                join_all(plugins.iter().map(async move |plugin| {
                     let plugin = plugin.lock().await;
                     let schema = plugin.parameter_schema();
                     debug!(
@@ -235,7 +281,8 @@ impl Provider for MistralRsProvider {
                             parameters,
                         },
                     }
-                })).await;
+                }))
+                .await;
 
             info!(
                 tool_count = mistral_tools.len(),

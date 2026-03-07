@@ -333,7 +333,10 @@ impl Config {
     }
 
     /// Configure personalization settings.
-    pub fn with_personalization_config(mut self, personalization_config: PersonalizationConfig) -> Self {
+    pub fn with_personalization_config(
+        mut self,
+        personalization_config: PersonalizationConfig,
+    ) -> Self {
         self.personalization = personalization_config;
         self
     }

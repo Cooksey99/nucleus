@@ -30,16 +30,16 @@
 use crate::config::Config;
 use crate::models::EmbeddingModel;
 use crate::provider::{
-    create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, Tool, ToolCall,
-    ToolFunction,
+    create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, StructuredOutput, Tool, ToolCall, ToolFunction 
 };
 use crate::rag::RagEngine;
 use anyhow::{Context, Result};
+use futures::future::join_all;
 use nucleus_plugin::{Permission, PluginRegistry};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
-use futures::future::join_all;
+
 
 /// Manages multi-turn conversations with tool-augmented LLM capabilities.
 ///
@@ -86,6 +86,8 @@ pub struct ChatManager {
     registry: Arc<PluginRegistry>,
     /// RAG manager for knowledge base integration (with persistent storage)
     rag_engine: Arc<RagEngine>,
+    /// Optional JSON schema for forcing a structured JSON output
+    structured_output: Option<StructuredOutput>,
 }
 
 impl ChatManager {
@@ -254,6 +256,16 @@ impl ChatManager {
             .context("Failed to index directory")
     }
 
+    /// Sets the structured output for the `ChatManager`.
+    pub fn set_structured_output(&mut self, schema: serde_json::Value) {
+        self.structured_output = Some(StructuredOutput::new(schema));
+    }
+
+    /// Removed any previously set `structured_output` JSON schema from `ChatManager`
+    pub fn clear_structured_output(&mut self) {
+        self.structured_output = None;
+    }
+
     /// Sends a query to the LLM and returns the final response.
     ///
     /// This method handles the complete conversation flow including:
@@ -341,47 +353,15 @@ impl ChatManager {
     ///     print!("{}", chunk);
     ///     io::stdout().flush().unwrap();
     /// }).await?;
-    /// println!("\n\nFinal response: {}", response);
+    /// println!("Final response: {}", response);
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn query_stream<F>(&self, user_message: &str, mut on_chunk: F) -> Result<String>
+    pub async fn query_stream<F>(&self, user_message: &str, on_chunk: F) -> Result<String>
     where
         F: FnMut(&str) + Send,
     {
-        // Retrieve relevant context from knowledge base if available
-        let rag_count = self.rag_engine.count().await;
-        debug!("RAG knowledge base has {} documents", rag_count);
-
-        // Context retrieved from RAG
-        let context = if rag_count > 0 {
-            debug!("Retrieving RAG context for query: {}", user_message);
-            self.rag_engine
-                .retrieve_context(user_message)
-                .await
-                .unwrap_or_else(|e| {
-                    debug!("Could not retrieve RAG context: {}", e);
-                    String::new()
-                })
-        } else {
-            debug!("RAG knowledge base is empty, skipping context retrieval");
-            String::new()
-        };
-
-        // Construct user message with context if available
-        let enhanced_message = if !context.is_empty() {
-            debug!(
-                "Enhanced message with {} characters of RAG context",
-                context.len()
-            );
-            format!("{}{}", context, user_message)
-        } else {
-            debug!("No RAG context available, using original message");
-            user_message.to_string()
-        };
-
-        let mut messages = vec![Message::user(Some(context.clone()), &enhanced_message)];
-
+        let (context, messages) = self.prepare_messages(user_message).await;
         let tools = self.build_tools().await;
 
         loop {
@@ -392,47 +372,17 @@ impl ChatManager {
                 request.tools = Some(tools.clone());
             }
 
-            // Stream the LLM response, accumulating content and preserving tool calls.
-            // Important: Tool calls may arrive in early chunks while content streams,
-            // so we must preserve them separately from the final chunk.
-            let mut accumulated_content = String::new();
-            let mut current_response: Option<ChatResponse> = None;
-            let mut tool_calls: Option<Vec<ToolCall>> = None;
-            self.provider
-                .chat(
-                    request,
-                    Box::new(|response| {
-                        // Call user's streaming callback with incremental content
-                        if !response.done && !response.content.is_empty() {
-                            on_chunk(&response.content);
-                        }
+            if let Some(structured_output) = &self.structured_output {
+                request = request.with_structured_output(structured_output.clone()); 
+            }
 
-                        // Accumulate incremental content (response.content), not full message
-                        accumulated_content.push_str(&response.content);
-
-                        // Preserve tool calls from any chunk - they typically arrive early
-                        // in the stream and may be absent from the final done=true chunk
-                        if let Some(ref tool_calls_ref) = response.message.tool_calls {
-                            tool_calls = Some(tool_calls_ref.clone());
-                        }
-
-                        current_response = Some(response);
-                    }),
-                )
-                .await
-                .context("Failed to get LLM response")?;
-
-            let mut response = current_response.context("No response from LLM")?;
-
-            // Reconstruct the complete message with accumulated content and preserved tool calls
-            response.message.content = accumulated_content;
-            response.message.tool_calls = tool_calls;
-            let assistant_message = response.message;
+            let assistant_message = self.process_response_stream(request, on_chunk).await?;
 
             // Handle tool calls: execute each tool and add results to conversation
             if let Some(tool_calls) = &assistant_message.tool_calls {
                 // Add the assistant's message with tool calls to conversation history
-                messages.push(Message {
+                let mut new_messages = messages;
+                new_messages.push(Message {
                     role: "assistant".to_string(),
                     context: Some(context.to_string()),
                     content: assistant_message.content.clone(),
@@ -453,7 +403,7 @@ impl ChatManager {
                         .with_context(|| format!("Failed to execute tool: {}", tool_name))?;
 
                     // Add tool result as a message for the LLM to synthesize
-                    messages.push(Message {
+                    new_messages.push(Message {
                         role: "tool".to_string(),
                         context: Some(context.to_string()),
                         content: result.content,
@@ -462,6 +412,7 @@ impl ChatManager {
                     });
                 }
                 // Continue loop to get LLM's response using the tool results
+                return self.handle_tools(new_messages, context).await;
             } else {
                 // No tool calls - this is the final response
                 return Ok(assistant_message.content);
@@ -469,36 +420,199 @@ impl ChatManager {
         }
     }
 
-    /// Converts registered plugins into Ollama tool definitions.
+    /// Converts registered plugins into tool definitions.
     ///
     /// Transforms plugins from the registry into the JSON schema format
-    /// expected by Ollama's tool calling API. Each plugin becomes a tool
-    /// with its name, description, and parameter schema.
-    ///
-    /// # Returns
-    ///
-    /// A vector of tool definitions to send with LLM requests.
+    /// Each plugin becomes a tool with its name, description, and parameter schema.
     ///
     /// # Note
     ///
     /// This method is called once at the start of each query. Tools are
     /// included in every LLM request throughout the conversation loop.
     async fn build_tools(&self) -> Vec<Tool> {
-        join_all(self.registry
-            .all()
-            .iter()
-            .map(async move |plugin| {
-                let plugin = plugin.lock().await;
-                let spec = plugin.parameter_schema();
-                Tool {
-                    tool_type: "function".to_string(),
-                    function: ToolFunction {
-                        name: plugin.name().to_string(),
-                        description: plugin.description().to_string(),
-                        parameters: spec,
-                    },
+        join_all(self.registry.all().iter().map(async move |plugin| {
+            let plugin = plugin.lock().await;
+            let spec = plugin.parameter_schema();
+            Tool {
+                tool_type: "function".to_string(),
+                function: ToolFunction {
+                    name: plugin.name().to_string(),
+                    description: plugin.description().to_string(),
+                    parameters: spec,
+                },
+            }
+        }))
+        .await
+    }
+
+    /// Prepare initial messages with RAG context.
+    ///
+    /// Retrieves relevant context from the knowledge base and constructs
+    /// the initial user message with enhanced context if available.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_message` - The original user query
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (context, messages) where context is the retrieved RAG context
+    /// and messages is a vector containing the initial user message.
+    async fn prepare_messages(&self, user_message: &str) -> (String, Vec<Message>) {
+        let rag_count = self.rag_engine.count().await;
+        debug!("RAG knowledge base has {} documents", rag_count);
+
+        let context = if rag_count > 0 {
+            debug!("Retrieving RAG context for query: {}", user_message);
+            self.rag_engine
+                .retrieve_context(user_message)
+                .await
+                .unwrap_or_else(|e| {
+                    debug!("Could not retrieve RAG context: {}", e);
+                    String::new()
+                })
+        } else {
+            debug!("RAG knowledge base is empty, skipping context retrieval");
+            String::new()
+        };
+
+        let enhanced_message = if !context.is_empty() {
+            debug!(
+                "Enhanced message with {} characters of RAG context",
+                context.len()
+            );
+            format!("{}{}", context, user_message)
+        } else {
+            debug!("No RAG context available, using original message");
+            user_message.to_string()
+        };
+
+        let messages = vec![Message::user(Some(context.clone()), &enhanced_message)];
+        (context, messages)
+    }
+
+    /// Process LLM response stream and accumulate content.
+    ///
+    /// Handles streaming response chunks, accumulates content, and preserves
+    /// tool calls from any chunk in the stream.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The chat request to send to the LLM
+    /// * `on_chunk` - Callback for streaming content chunks
+    ///
+    /// # Returns
+    ///
+    /// The complete assistant message with accumulated content and preserved tool calls.
+    async fn process_response_stream<'a, F>(
+        &'a self,
+        request: ChatRequest,
+        mut on_chunk: F,
+    ) -> Result<Message>
+    where
+        F: FnMut(&str) + Send + 'a,
+    {
+        let mut accumulated_content = String::new();
+        let mut current_response: Option<ChatResponse> = None;
+        let mut tool_calls: Option<Vec<ToolCall>> = None;
+
+        self.provider
+            .chat(
+                request,
+                Box::new(|response| {
+                    // Call user's streaming callback with incremental content
+                    if !response.done && !response.content.is_empty() {
+                        on_chunk(&response.content);
+                    }
+
+                    // Accumulate incremental content only from non-final chunks
+                    if !response.done {
+                        accumulated_content.push_str(&response.content);
+                    }
+
+                    // Preserve tool calls from any chunk
+                    if let Some(ref tool_calls_ref) = response.message.tool_calls {
+                        tool_calls = Some(tool_calls_ref.clone());
+                    }
+
+                    current_response = Some(response);
+                }),
+            )
+            .await
+            .context("Failed to get LLM response")?;
+
+        let mut response = current_response.context("No response from LLM")?;
+        response.message.content = accumulated_content;
+        response.message.tool_calls = tool_calls;
+
+        Ok(response.message)
+    }
+
+    /// Handle tool execution loop.
+    ///
+    /// Executes tools requested by the LLM and continues the conversation
+    /// until a final non-tool response is received.
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - Current conversation messages
+    /// * `context` - RAG context for this conversation
+    ///
+    /// # Returns
+    ///
+    /// The final LLM response after all tool executions are complete.
+    async fn handle_tools(&self, messages: Vec<Message>, context: String) -> Result<String> {
+        let tools = self.build_tools().await;
+
+        let mut current_messages = messages;
+        loop {
+            let mut request = ChatRequest::new(&self.config.llm.model, current_messages.clone())
+                .with_temperature(self.config.llm.temperature);
+
+            if !tools.is_empty() {
+                request.tools = Some(tools.clone());
+            }
+
+            let assistant_message = self.process_response_stream(request, |_| {}).await?;
+
+            if let Some(tool_calls) = &assistant_message.tool_calls {
+                // Add assistant message with tool calls to history
+                current_messages.push(Message {
+                    role: "assistant".to_string(),
+                    context: Some(context.to_string()),
+                    content: assistant_message.content.clone(),
+                    images: None,
+                    tool_calls: Some(tool_calls.clone()),
+                });
+
+                // Execute each requested tool
+                for tool_call in tool_calls {
+                    let tool_name = &tool_call.function.name;
+                    let tool_args = &tool_call.function.arguments;
+                    info!(tool_name = %tool_name, "Executing tool");
+
+                    let result = self
+                        .registry
+                        .execute(tool_name, tool_args.clone())
+                        .await
+                        .with_context(|| format!("Failed to execute tool: {}", tool_name))?;
+
+                    // Add tool result to conversation
+                    current_messages.push(Message {
+                        role: "tool".to_string(),
+                        context: Some(context.to_string()),
+                        content: result.content,
+                        images: None,
+                        tool_calls: None,
+                    });
                 }
-            })).await
+
+                // Continue loop to get LLM's response using tool results
+            } else {
+                // No tool calls - return final response
+                return Ok(assistant_message.content);
+            }
+        }
     }
 }
 
@@ -549,6 +663,7 @@ pub struct ChatManagerBuilder {
     llm_model_override: Option<String>,
     embedding_model_override: Option<EmbeddingModel>,
     provider_type_override: Option<ProviderType>,
+    structured_output: Option<StructuredOutput> 
 }
 
 impl ChatManagerBuilder {
@@ -562,6 +677,7 @@ impl ChatManagerBuilder {
             llm_model_override: None,
             embedding_model_override: None,
             provider_type_override: None,
+            structured_output: None
         }
     }
 
@@ -710,6 +826,7 @@ impl ChatManagerBuilder {
             provider,
             registry: self.registry,
             rag_engine,
+            structured_output: self.structured_output
         })
     }
 }
