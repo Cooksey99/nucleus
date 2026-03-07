@@ -43,3 +43,9 @@ cc = "1.0"
 
 [dev-dependencies]
 tempfile = "3.13"
+
+[profile.dev]
+recursion_limit=256
+
+[profile.release]
+recursion_limit=256
