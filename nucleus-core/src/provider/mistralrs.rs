@@ -196,18 +196,26 @@ impl Provider for MistralRsProvider {
                 serde_json::to_string_pretty(&structured_output.schema).unwrap_or_default()
             );
             
-            // Include description if available
+            let mut system_message = String::new();
+            
             if let Some(description) = &structured_output.description {
-                messages_with_schema = messages_with_schema.add_message(
-                    TextMessageRole::System,
-                    &format!("{}\n{}", description, schema_instructions)
-                );
-            } else {
-                messages_with_schema = messages_with_schema.add_message(
-                    TextMessageRole::System,
-                    &schema_instructions
-                );
+                system_message.push_str(&format!("{}\n\n", description));
             }
+            
+            if let Some(example) = &structured_output.example {
+                system_message.push_str(&format!(
+                    "Here's an example of the expected format:\n{}\n\n",
+                    serde_json::to_string_pretty(example).unwrap_or_default()
+                ));
+            }
+            
+            // Add schema instructions
+            system_message.push_str(&schema_instructions);
+            
+            messages_with_schema = messages_with_schema.add_message(
+                TextMessageRole::System,
+                &system_message
+            );
             
             // Add original messages
             for msg in &request.messages {
