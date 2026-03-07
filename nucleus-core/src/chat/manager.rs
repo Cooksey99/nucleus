@@ -276,6 +276,8 @@ impl ChatManager {
     ///
     /// # Arguments
     ///
+    /// * `messages` - Optional custom conversation history. If provided, this replaces
+    ///   the default message preparation and uses the exact messages provided.
     /// * `user_message` - The user's question or prompt
     ///
     /// # Returns
@@ -298,8 +300,10 @@ impl ChatManager {
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
     /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
-    /// # let manager = ChatManager::new(config, registry);
-    /// let response = manager.query("Summarize the README file").await?;
+    /// # let manager = ChatManager::new(config, registry).await?;
+    /// 
+    /// // Simple query (no conversation history)
+    /// let response = manager.query("Summarize the README file", None).await?;
     /// println!("Response: {}", response);
     /// # Ok(())
     /// # }
@@ -317,8 +321,8 @@ impl ChatManager {
     /// 4. If no tool calls, return the response
     ///
     /// The loop ensures the LLM can chain multiple tool calls if needed.
-    pub async fn query(&self, user_message: &str) -> Result<String> {
-        self.query_stream(user_message, |_| {}).await
+    pub async fn query(&self, messages: Option<Vec<Message>>, user_message: &str) -> Result<String> {
+        self.query_stream(messages, user_message, |_| {}).await
     }
 
     /// Send a query to the LLM and stream the response through a callback.
@@ -329,6 +333,8 @@ impl ChatManager {
     ///
     /// # Arguments
     ///
+    /// * `messages` - Optional custom conversation history. If provided, this replaces
+    ///   the default message preparation and uses the exact messages provided.
     /// * `user_message` - The user's question or prompt
     /// * `on_chunk` - Callback invoked for each chunk of streaming content.
     ///   Receives the incremental content (not accumulated).
@@ -349,7 +355,7 @@ impl ChatManager {
     /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
     /// # let manager = ChatManager::new(config, registry).await?;
     /// // Print response as it streams
-    /// let response = manager.query_stream("Tell me a story", |chunk| {
+    /// let response = manager.query_stream(None, "Tell me a story", |chunk| {
     ///     print!("{}", chunk);
     ///     io::stdout().flush().unwrap();
     /// }).await?;
@@ -357,11 +363,14 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn query_stream<F>(&self, user_message: &str, on_chunk: F) -> Result<String>
+    pub async fn query_stream<F>(&self, messages: Option<Vec<Message>>, user_message: &str, on_chunk: F) -> Result<String>
     where
         F: FnMut(&str) + Send,
     {
-        let (context, messages) = self.prepare_messages(user_message).await;
+        let (context, messages) = match messages {
+            Some(messages) => (String::new(), messages),
+            None => self.prepare_messages(user_message).await,
+        };
         let tools = self.build_tools().await;
 
         loop {

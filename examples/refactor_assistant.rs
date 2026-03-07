@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         test_dir.join("config.rs.bak").display()
     );
 
-    match manager.query(&query).await {
+    match manager.query(None, &query).await {
         Ok(response) => {
             println!("AI Response:\n{}", response);
         }

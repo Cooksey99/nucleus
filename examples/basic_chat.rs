@@ -27,7 +27,7 @@ async fn main() {
     let start = std::time::Instant::now();
     let mut token_count = 0;
     let response = manager
-        .query_stream(message, |chunk| {
+        .query_stream(None, message, |chunk| {
             print!("{}", chunk);
             io::stdout().flush().unwrap();
             // Rough token estimation: ~4 chars per token

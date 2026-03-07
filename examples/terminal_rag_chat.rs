@@ -70,7 +70,7 @@ async fn main() {
         }
 
         manager
-            .query_stream(&input, |chunk| {
+            .query_stream(None, &input, |chunk| {
                 print!("{}", chunk);
             })
             .await

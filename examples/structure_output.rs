@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     println!("\nAsking LLM to generate structured data...\n");
     
     let response = chat_manager
-        .query("Create a profile for a fictional software engineer named Alice who works at a tech startup.")
+        .query(None, "Create a profile for a fictional software engineer named Alice who works at a tech startup.")
         .await?;
     
     println!("Raw response:\n{}", response);
@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
     
     println!("Now testing normal conversation (no structured output):");
     let normal_response = chat_manager
-        .query("What's the capital of Japan?")
+        .query(None, "What's the capital of Japan?")
         .await?;
     
     println!("{}", normal_response);

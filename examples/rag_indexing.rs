@@ -71,6 +71,7 @@ async fn query_example(manager: &ChatManager) -> anyhow::Result<()> {
     println!("Query: 'Where is the index_directory function implemented?'\n");
 
     let response = manager.query(
+        None,
         "In which file and module is the index_directory function implemented? What does it do?"
     ).await?;
 
