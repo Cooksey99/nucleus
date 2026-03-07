@@ -28,12 +28,13 @@ mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", rev = "2ed
 async-trait.workspace = true
 tracing = "0.1.43"
 qdrant-client = { version = "1.11", default-features = false, features = ["serde"] }
-lancedb = "0.22"
-arrow-array = "56.2"
+lancedb = "0.26.2"
+arrow-array = "57.2"
 sha2 = "0.10"
 flate2 = "1.0"
 tar = "0.4"
 tokenizers = { version = "0.22.2", features = ["onig"] }
+arrow-schema = "57.2"
 
 [build-dependencies]
 cc = { version = "1.0", optional = true }

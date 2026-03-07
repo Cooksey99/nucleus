@@ -13,7 +13,9 @@ use arrow_array::{
 };
 use async_trait::async_trait;
 use futures::stream::TryStreamExt;
-use lancedb::arrow::arrow_schema::{DataType, Field, Schema};
+use arrow_schema::DataType;
+use arrow_schema::Field;
+use lancedb::arrow::arrow_schema::Schema;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{connect, Connection, Table};
 use std::sync::Arc;
