@@ -79,7 +79,7 @@ use tracing::{debug, info};
 /// - All conversation history is maintained for context
 pub struct ChatManager {
     /// Nucleus core configuration
-    config: Config,
+    pub config: Config,
     /// LLM provider for communication
     provider: Arc<dyn Provider>,
     /// Registry for available plugins/tools
@@ -87,7 +87,7 @@ pub struct ChatManager {
     /// RAG manager for knowledge base integration (with persistent storage)
     rag_engine: Arc<RagEngine>,
     /// Optional JSON schema for forcing a structured JSON output
-    structured_output: Option<StructuredOutput>,
+    pub structured_output: Option<StructuredOutput>,
 }
 
 impl ChatManager {
