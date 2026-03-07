@@ -14,6 +14,7 @@
 pub mod chat;
 pub mod config;
 pub mod detection;
+pub mod mcp;
 pub mod models;
 pub mod patterns;
 pub mod provider;
@@ -33,3 +34,6 @@ pub use provider::{
     ChatRequest, ChatResponse, Message, Provider, ProviderError, Tool, ToolCall, ToolCallFunction,
     ToolFunction,
 };
+
+// MCP exports
+pub use mcp::McpClient;
