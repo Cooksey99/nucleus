@@ -819,7 +819,11 @@ impl ChatManagerBuilder {
             config.llm.model = llm_model;
         }
         if let Some(embedding_model) = self.embedding_model_override {
-            config.rag.embedding_model = embedding_model;
+            if config.rag.is_some() {
+                config.rag.clone().unwrap().embedding_model = embedding_model;
+            } else {
+                ()
+            }
         }
         if let Some(provider_type) = self.provider_type_override {
             config.llm.provider = provider_type.as_str().to_string();

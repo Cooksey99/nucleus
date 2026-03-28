@@ -23,7 +23,7 @@ pub type Result<T> = std::result::Result<T, ConfigError>;
 pub struct Config {
     pub system_prompt: String,
     pub llm: LlmConfig,
-    pub rag: RagConfig,
+    pub rag: Option<RagConfig>,
     pub storage: StorageConfig,
     pub personalization: PersonalizationConfig,
 
@@ -255,7 +255,7 @@ impl Default for Config {
             system_prompt:
                 "You are a helpful AI assistant specializing in programming and development tasks."
                     .to_string(),
-            rag: RagConfig::default(),
+            rag: None,
             storage: StorageConfig::default(),
             personalization: PersonalizationConfig::default(),
             permission: Permission::default(),
@@ -322,7 +322,7 @@ impl Config {
 
     /// Configure RAG settings.
     pub fn with_rag_config(mut self, rag_config: RagConfig) -> Self {
-        self.rag = rag_config;
+        self.rag = Some(rag_config);
         self
     }
 

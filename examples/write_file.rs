@@ -2,6 +2,7 @@
 //!
 //! Demonstrates how the LLM can write files using the plugin system.
 
+use nucleus::ChatManagerBuilder;
 use nucleus_core::{ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 use nucleus_std::WriteFilePlugin;
@@ -24,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
     registry.register(WriteFilePlugin::new());
 
     // Use the local Q4_K_M GGUF from Ollama's blob storage
-    let manager = ChatManager::builder()
+    let manager = ChatManagerBuilder::new()
         .with_config(config)
         .with_registry(registry)
         .with_llm_model("Qwen/Qwen3-8B")
