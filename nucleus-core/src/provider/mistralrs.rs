@@ -20,7 +20,6 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
-
 /// mistral.rs in-process provider.
 ///
 /// Automatically detects if model is:
@@ -189,34 +188,32 @@ impl Provider for MistralRsProvider {
         if let Some(structured_output) = &request.structured_output {
             // Rebuild messages with schema instructions
             let mut messages_with_schema = TextMessages::new();
-            
+
             // Add system message with JSON schema instructions
             let schema_instructions = format!(
                 "You MUST respond with valid JSON matching this schema:\n{}\n Do NOT wrap it in markdown code fences. Stricly return only the JSON.",
                 serde_json::to_string_pretty(&structured_output.schema).unwrap_or_default()
             );
-            
+
             let mut system_message = String::new();
-            
+
             if let Some(description) = &structured_output.description {
                 system_message.push_str(&format!("{}\n\n", description));
             }
-            
+
             if let Some(example) = &structured_output.example {
                 system_message.push_str(&format!(
                     "Here's an example of the expected format:\n{}\n\n",
                     serde_json::to_string_pretty(example).unwrap_or_default()
                 ));
             }
-            
+
             // Add schema instructions
             system_message.push_str(&schema_instructions);
-            
-            messages_with_schema = messages_with_schema.add_message(
-                TextMessageRole::System,
-                &system_message
-            );
-            
+
+            messages_with_schema =
+                messages_with_schema.add_message(TextMessageRole::System, &system_message);
+
             // Add original messages
             for msg in &request.messages {
                 let role = match msg.role.as_str() {
@@ -228,7 +225,7 @@ impl Provider for MistralRsProvider {
                 };
                 messages_with_schema = messages_with_schema.add_message(role, &msg.content);
             }
-            
+
             // Recreate builder with schema-enhanced messages
             builder = RequestBuilder::from(messages_with_schema);
         }

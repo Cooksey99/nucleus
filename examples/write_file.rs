@@ -34,7 +34,10 @@ async fn main() -> anyhow::Result<()> {
     println!("Question: Create a file called 'hello.txt' with the content 'Hello from nucleus!'\n");
 
     let response = manager
-        .query(None, "Create a file called 'seth.txt' and put a random a joke in it.")
+        .query(
+            None,
+            "Create a file called 'seth.txt' and put a random a joke in it.",
+        )
         .await?;
 
     println!("AI Response:\n{}", response);

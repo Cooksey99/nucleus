@@ -30,7 +30,8 @@
 use crate::config::Config;
 use crate::models::EmbeddingModel;
 use crate::provider::{
-    create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, StructuredOutput, Tool, ToolCall, ToolFunction 
+    create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, StructuredOutput,
+    Tool, ToolCall, ToolFunction,
 };
 use crate::rag::RagEngine;
 use anyhow::{Context, Result};
@@ -39,7 +40,6 @@ use nucleus_plugin::{Permission, PluginRegistry};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
-
 
 /// Manages multi-turn conversations with tool-augmented LLM capabilities.
 ///
@@ -301,7 +301,7 @@ impl ChatManager {
     /// # let config = Config::load_or_default();
     /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
     /// # let manager = ChatManager::new(config, registry).await?;
-    /// 
+    ///
     /// // Simple query (no conversation history)
     /// let response = manager.query("Summarize the README file", None).await?;
     /// println!("Response: {}", response);
@@ -321,7 +321,11 @@ impl ChatManager {
     /// 4. If no tool calls, return the response
     ///
     /// The loop ensures the LLM can chain multiple tool calls if needed.
-    pub async fn query(&self, messages: Option<&Vec<Message>>, user_message: &str) -> Result<String> {
+    pub async fn query(
+        &self,
+        messages: Option<&Vec<Message>>,
+        user_message: &str,
+    ) -> Result<String> {
         self.query_stream(messages, user_message, |_| {}).await
     }
 
@@ -363,17 +367,20 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn query_stream<F>(&self, messages: Option<&Vec<Message>>, user_message: &str, on_chunk: F) -> Result<String>
+    pub async fn query_stream<F>(
+        &self,
+        messages: Option<&Vec<Message>>,
+        user_message: &str,
+        mut on_chunk: F,
+    ) -> Result<String>
     where
         F: FnMut(&str) + Send,
     {
-        let (context, messages) = match messages {
+        let (context, mut messages) = match messages {
             Some(messages) => (String::new(), messages.clone()),
-            None => {
-                let (context, messages) = self.prepare_messages(user_message).await;
-                (context, messages)
-            },
+            None => self.prepare_messages(user_message).await,
         };
+
         let tools = self.build_tools().await;
 
         loop {
@@ -385,50 +392,44 @@ impl ChatManager {
             }
 
             if let Some(structured_output) = &self.structured_output {
-                request = request.with_structured_output(structured_output.clone()); 
+                request = request.with_structured_output(structured_output.clone());
             }
 
-            let assistant_message = self.process_response_stream(request, on_chunk).await?;
+            let assistant_message = self.process_response_stream(request, &mut on_chunk).await?;
 
-            // Handle tool calls: execute each tool and add results to conversation
-            if let Some(tool_calls) = &assistant_message.tool_calls {
-                // Add the assistant's message with tool calls to conversation history
+            if let Some(tool_calls) = assistant_message.tool_calls {
                 let mut new_messages = messages.clone();
                 new_messages.push(Message {
                     role: "assistant".to_string(),
-                    context: Some(context.to_string()),
+                    context: Some(context.clone()),
                     content: assistant_message.content.clone(),
                     images: None,
                     tool_calls: Some(tool_calls.clone()),
                 });
 
-                // Execute each requested tool and add results
                 for tool_call in tool_calls {
-                    let tool_name = &tool_call.function.name;
-                    let tool_args = &tool_call.function.arguments;
-                    info!(tool_name = %tool_name, "Executing tool");
-
                     let result = self
                         .registry
-                        .execute(tool_name, tool_args.clone())
-                        .await
-                        .with_context(|| format!("Failed to execute tool: {}", tool_name))?;
+                        .execute(
+                            &tool_call.function.name,
+                            tool_call.function.arguments.clone(),
+                        )
+                        .await?;
 
-                    // Add tool result as a message for the LLM to synthesize
                     new_messages.push(Message {
                         role: "tool".to_string(),
-                        context: Some(context.to_string()),
+                        context: Some(context.clone()),
                         content: result.content,
                         images: None,
                         tool_calls: None,
                     });
                 }
-                // Continue loop to get LLM's response using the tool results
-                return self.handle_tools(new_messages, context).await;
-            } else {
-                // No tool calls - this is the final response
-                return Ok(assistant_message.content);
+
+                messages = new_messages;
+                continue;
             }
+
+            return Ok(assistant_message.content);
         }
     }
 
@@ -517,50 +518,43 @@ impl ChatManager {
     /// # Returns
     ///
     /// The complete assistant message with accumulated content and preserved tool calls.
-    async fn process_response_stream<'a, F>(
-        &'a self,
+    async fn process_response_stream<F>(
+        &self,
         request: ChatRequest,
         mut on_chunk: F,
     ) -> Result<Message>
     where
-        F: FnMut(&str) + Send + 'a,
+        F: FnMut(&str) + Send,
     {
         let mut accumulated_content = String::new();
-        let mut current_response: Option<ChatResponse> = None;
+        let mut final_response: Option<ChatResponse> = None;
         let mut tool_calls: Option<Vec<ToolCall>> = None;
 
         self.provider
             .chat(
                 request,
                 Box::new(|response| {
-                    // Call user's streaming callback with incremental content
                     if !response.done && !response.content.is_empty() {
                         on_chunk(&response.content);
-                    }
-
-                    // Accumulate incremental content only from non-final chunks
-                    if !response.done {
                         accumulated_content.push_str(&response.content);
                     }
 
-                    // Preserve tool calls from any chunk
-                    if let Some(ref tool_calls_ref) = response.message.tool_calls {
-                        tool_calls = Some(tool_calls_ref.clone());
+                    if let Some(ref calls) = response.message.tool_calls {
+                        tool_calls = Some(calls.clone());
                     }
 
-                    current_response = Some(response);
+                    final_response = Some(response);
                 }),
             )
             .await
             .context("Failed to get LLM response")?;
 
-        let mut response = current_response.context("No response from LLM")?;
+        let mut response = final_response.context("No response from LLM")?;
         response.message.content = accumulated_content;
         response.message.tool_calls = tool_calls;
 
         Ok(response.message)
     }
-
     /// Handle tool execution loop.
     ///
     /// Executes tools requested by the LLM and continues the conversation
@@ -676,7 +670,7 @@ pub struct ChatManagerBuilder {
     llm_model_override: Option<String>,
     embedding_model_override: Option<EmbeddingModel>,
     provider_type_override: Option<ProviderType>,
-    structured_output: Option<StructuredOutput> 
+    structured_output: Option<StructuredOutput>,
 }
 
 impl ChatManagerBuilder {
@@ -690,7 +684,7 @@ impl ChatManagerBuilder {
             llm_model_override: None,
             embedding_model_override: None,
             provider_type_override: None,
-            structured_output: None
+            structured_output: None,
         }
     }
 
@@ -839,7 +833,7 @@ impl ChatManagerBuilder {
             provider,
             registry: self.registry,
             rag_engine,
-            structured_output: self.structured_output
+            structured_output: self.structured_output,
         })
     }
 }

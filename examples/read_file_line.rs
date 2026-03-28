@@ -34,7 +34,9 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Question: What's on line 7 of config.yaml?\n");
 
-    let response = manager.query(None, "What's on line 7 of config.yaml?").await?;
+    let response = manager
+        .query(None, "What's on line 7 of config.yaml?")
+        .await?;
 
     println!("AI Response:\n{}", response);
 

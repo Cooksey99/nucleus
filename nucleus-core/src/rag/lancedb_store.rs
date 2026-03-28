@@ -11,10 +11,10 @@ use arrow_array::{
     array::{ArrayRef, FixedSizeListArray, Float32Array, StringArray},
     Array, RecordBatch, RecordBatchIterator,
 };
-use async_trait::async_trait;
-use futures::stream::TryStreamExt;
 use arrow_schema::DataType;
 use arrow_schema::Field;
+use async_trait::async_trait;
+use futures::stream::TryStreamExt;
 use lancedb::arrow::arrow_schema::Schema;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{connect, Connection, Table};
