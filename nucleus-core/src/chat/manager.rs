@@ -475,21 +475,30 @@ impl ChatManager {
     /// A tuple of (context, messages) where context is the retrieved RAG context
     /// and messages is a vector containing the initial user message.
     async fn prepare_messages(&self, user_message: &str) -> (String, Vec<Message>) {
-        let rag_count = self.rag_engine.as_ref().unwrap().count().await;
-        debug!("RAG knowledge base has {} documents", rag_count);
-
-        let context = if rag_count > 0 {
-            debug!("Retrieving RAG context for query: {}", user_message);
-            self.rag_engine.as_ref().unwrap()
-                .retrieve_context(user_message)
-                .await
-                .unwrap_or_else(|e| {
-                    debug!("Could not retrieve RAG context: {}", e);
-                    String::new()
-                })
-        } else {
-            debug!("RAG knowledge base is empty, skipping context retrieval");
-            String::new()
+        let (rag_count, context) = match self.rag_engine.as_ref() {
+            Some(engine) => {
+                let count = engine.count().await;
+                debug!("RAG knowledge base has {} documents", count);
+                
+                if count > 0 {
+                    debug!("Retrieving RAG context for query: {}", user_message);
+                    let ctx = engine
+                        .retrieve_context(user_message)
+                        .await
+                        .unwrap_or_else(|e| {
+                            debug!("Could not retrieve RAG context: {}", e);
+                            String::new()
+                        });
+                    (count, ctx)
+                } else {
+                    debug!("RAG knowledge base is empty, skipping context retrieval");
+                    (count, String::new())
+                }
+            }
+            None => {
+                debug!("RAG engine not configured, skipping context retrieval");
+                (0, String::new())
+            }
         };
 
         let enhanced_message = if !context.is_empty() {
