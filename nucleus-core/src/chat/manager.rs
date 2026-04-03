@@ -85,7 +85,7 @@ pub struct ChatManager {
     /// Registry for available plugins/tools
     registry: Arc<PluginRegistry>,
     /// RAG manager for knowledge base integration (with persistent storage)
-    rag_engine: Arc<RagEngine>,
+    rag_engine: Option<Arc<RagEngine>>,
     /// Optional JSON schema for forcing a structured JSON output
     pub structured_output: Option<StructuredOutput>,
 }
@@ -176,7 +176,7 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn with_provider(mut self, provider: Arc<dyn Provider>) -> Result<Self> {
-        self.rag_engine = Arc::new(RagEngine::new(&self.config, provider.clone()).await?);
+        self.rag_engine = Some(Arc::new(RagEngine::new(&self.config, provider.clone()).await?));
         self.provider = provider;
         Ok(self)
     }
@@ -202,7 +202,7 @@ impl ChatManager {
     /// # }
     /// ```
     pub fn with_rag(mut self, rag: Arc<RagEngine>) -> Self {
-        self.rag_engine = rag;
+        self.rag_engine = Some(rag);
         self
     }
 
@@ -233,7 +233,10 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn knowledge_base_count(&self) -> usize {
-        self.rag_engine.count().await
+        match self.rag_engine.as_ref() {
+            Some(engine) => engine.count().await,
+            None => 0
+        }
     }
 
     /// Indexes a directory into the knowledge base.
@@ -250,10 +253,10 @@ impl ChatManager {
     ///
     /// Returns an error if indexing fails.
     pub async fn index_directory(&self, dir_path: &Path) -> Result<usize> {
-        self.rag_engine
-            .index_directory(dir_path)
-            .await
-            .context("Failed to index directory")
+        match self.rag_engine.as_ref() {
+            Some(engine) => engine.index_directory(dir_path).await.context("Failed to index directory"),
+            None => Err(anyhow::anyhow!("RAG Engine not configured"))
+        }
     }
 
     /// Sets the structured output for the `ChatManager`.
@@ -472,12 +475,12 @@ impl ChatManager {
     /// A tuple of (context, messages) where context is the retrieved RAG context
     /// and messages is a vector containing the initial user message.
     async fn prepare_messages(&self, user_message: &str) -> (String, Vec<Message>) {
-        let rag_count = self.rag_engine.count().await;
+        let rag_count = self.rag_engine.as_ref().unwrap().count().await;
         debug!("RAG knowledge base has {} documents", rag_count);
 
         let context = if rag_count > 0 {
             debug!("Retrieving RAG context for query: {}", user_message);
-            self.rag_engine
+            self.rag_engine.as_ref().unwrap()
                 .retrieve_context(user_message)
                 .await
                 .unwrap_or_else(|e| {
@@ -813,24 +816,27 @@ impl ChatManagerBuilder {
     /// - The provider fails to initialize
     /// - The RAG system fails to initialize
     pub async fn build(self) -> Result<ChatManager> {
-        let mut config = self.config;
+        let mut config = self.config.clone();
 
         if let Some(llm_model) = self.llm_model_override {
             config.llm.model = llm_model;
         }
-        if let Some(embedding_model) = self.embedding_model_override {
-            if config.rag.is_some() {
-                config.rag.clone().unwrap().embedding_model = embedding_model;
-            } else {
-                ()
-            }
-        }
+
         if let Some(provider_type) = self.provider_type_override {
             config.llm.provider = provider_type.as_str().to_string();
         }
 
         let provider = create_provider(&config, Arc::clone(&self.registry)).await?;
-        let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
+        let mut rag_engine = None;
+
+        if self.config.rag.clone().is_some() {
+            if let Some(embedding_model) = self.embedding_model_override {
+                config.rag.clone().unwrap().embedding_model = embedding_model;
+            }
+
+            let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
+        }
+
 
         Ok(ChatManager {
             config,

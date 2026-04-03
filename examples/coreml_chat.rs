@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use nucleus::{provider::ProviderType, ChatManager};
+use nucleus::{ChatManagerBuilder, provider::ProviderType};
 
 #[tokio::main]
 async fn main() {
@@ -11,7 +11,7 @@ async fn main() {
         )
         .init();
 
-    let manager = ChatManager::builder()
+    let manager = ChatManagerBuilder::new()
         .with_provider(ProviderType::CoreML)
         .with_llm_model("models/Llama-3.1-8B-Instruct-CoreML/llama_3.1_coreml.mlpackage")
         .build()

@@ -45,7 +45,7 @@ fn print_rag_config(config: &Config) {
         }
     }
     println!("  Collection: {}", config.storage.vector_db.collection_name);
-    println!("  Embedding: {}", config.rag.embedding_model.name);
+    println!("  Embedding: {}", config.rag.as_ref().unwrap().embedding_model.name);
     println!();
 }
 
