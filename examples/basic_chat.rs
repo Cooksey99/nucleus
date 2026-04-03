@@ -18,16 +18,18 @@ async fn main() {
         .await
         .expect("Failed to create chat manager");
 
-    let message = "Write me a short poem about Rust programming";
-    println!("User: {}", message);
-    println!("\nAssistant: ");
-    io::stdout().flush().unwrap();
+    loop {
+        println!("Enter message:");
+        std::io::stdout().flush().unwrap();
+
+        let mut message = String::new();
+        std::io::stdin().read_line(&mut message).expect("Unable to read line");
 
     // Stream response with live printing
     let start = std::time::Instant::now();
     let mut token_count = 0;
     let response = manager
-        .query_stream(None, message, |chunk| {
+        .query_stream(None, message.as_str(), |chunk| {
             print!("{}", chunk);
             io::stdout().flush().unwrap();
             // Rough token estimation: ~4 chars per token
@@ -45,4 +47,6 @@ async fn main() {
         "Est. throughput: {:.1} tok/s",
         token_count as f64 / elapsed.as_secs_f64()
     );
+    }
+
 }

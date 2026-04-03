@@ -5,7 +5,6 @@ members = [
     "nucleus-plugin",
     "nucleus-std",
     "nucleus-dev",
-    "nucleus-cli",
 ]
 
 [workspace.package]

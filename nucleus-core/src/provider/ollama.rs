@@ -153,7 +153,7 @@ impl Provider for OllamaProvider {
         let url = format!("{}/api/embed", self.base_url);
 
         let embed_request = EmbedRequest {
-            model: self.config.rag.embedding_model.name.clone(),
+            model: self.config.rag.clone().unwrap().embedding_model.name.clone(),
             input: text.to_string(),
         };
 

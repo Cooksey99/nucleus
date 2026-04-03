@@ -395,16 +395,16 @@ impl Provider for MistralRsProvider {
         Ok(())
     }
 
-    async fn embed(&self, text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {
-        // Lazy load embedding model on first use
+    async fn embed(&self, text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {     
+        let rag = &self.config.rag.clone().unwrap();
+       
         let embedding_model = self
             .embedding_model
             .get_or_try_init(|| async {
-                let model_path: String = match &self.config.rag.embedding_model.path {
+                let model_path: String = match &rag.embedding_model.path {
                     Some(path) => path.to_string_lossy().into(),
-                    None => self
-                        .config
-                        .rag
+                    None => 
+                        rag
                         .embedding_model
                         .hf_repo
                         .clone()
