@@ -4,9 +4,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
 #[cfg(unix)]
-use tokio::net::{UnixListener, UnixStream};
-#[cfg(unix)]
 use std::path::Path;
+#[cfg(unix)]
+use tokio::net::{UnixListener, UnixStream};
 
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
@@ -15,7 +15,7 @@ use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 pub enum TransportError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -43,9 +43,9 @@ impl WindowsPipeListener {
         let server = ServerOptions::new()
             .first_pipe_instance(false)
             .create(&self.path)?;
-        
+
         server.connect().await?;
-        
+
         Ok((server, ()))
     }
 }
@@ -64,41 +64,41 @@ impl IpcTransport {
             socket_path: socket_path.into(),
         }
     }
-    
+
     /// Binds to the IPC endpoint and returns a listener.
     #[cfg(unix)]
     pub async fn bind(&self) -> Result<IpcListener> {
         if Path::new(&self.socket_path).exists() {
             std::fs::remove_file(&self.socket_path)?;
         }
-        
+
         let listener = UnixListener::bind(&self.socket_path)?;
-        
+
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o600);
         std::fs::set_permissions(&self.socket_path, perms)?;
-        
+
         Ok(listener)
     }
-    
+
     #[cfg(windows)]
     pub async fn bind(&self) -> Result<IpcListener> {
         // Create the first instance of the named pipe
         let server = ServerOptions::new()
             .first_pipe_instance(true)
             .create(&self.socket_path)?;
-        
+
         Ok(WindowsPipeListener {
             path: self.socket_path.clone(),
         })
     }
-    
+
     /// Cleans up the IPC endpoint.
     #[cfg(unix)]
     pub fn cleanup(&self) {
         let _ = std::fs::remove_file(&self.socket_path);
     }
-    
+
     #[cfg(windows)]
     pub fn cleanup(&self) {
         // Named pipes are automatically cleaned up on Windows
@@ -111,10 +111,10 @@ pub async fn read_request(stream: &mut IpcStream) -> Result<Request> {
     let (reader, _) = stream.split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-    
+
     reader.read_line(&mut line).await?;
     let request = serde_json::from_str(&line)?;
-    
+
     Ok(request)
 }
 
@@ -122,10 +122,10 @@ pub async fn read_request(stream: &mut IpcStream) -> Result<Request> {
 pub async fn read_request(stream: &mut IpcStream) -> Result<Request> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
-    
+
     reader.read_line(&mut line).await?;
     let request = serde_json::from_str(&line)?;
-    
+
     Ok(request)
 }
 
@@ -140,6 +140,6 @@ pub async fn write_chunks(
         stream.write_all(b"\n").await?;
         stream.flush().await?;
     }
-    
+
     Ok(())
 }

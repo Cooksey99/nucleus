@@ -1,24 +1,32 @@
+use async_trait::async_trait;
 use nucleus_core::patterns;
 use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
-use async_trait::async_trait;
+use regex::Regex;
+use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::PathBuf;
 use walkdir::WalkDir;
-use regex::Regex;
 
 pub struct SearchPlugin;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 struct SearchParams {
+    /// Text or regex pattern to search for
     query: String,
+    /// Directory to search in (defaults to current directory)
+    #[serde(default)]
     path: Option<String>,
+    /// Treat query as a regex pattern instead of literal text
     #[serde(default)]
     regex: bool,
+    /// Perform case-sensitive matching
     #[serde(default)]
     case_sensitive: bool,
+    /// Maximum number of results to return (default: 100)
     #[serde(default = "default_max_results")]
     max_results: usize,
+    /// Patterns to exclude from search (e.g., "node_modules", "*.log")
     #[serde(default = "default_exclude_patterns")]
     exclude_patterns: Vec<String>,
 }
@@ -47,35 +55,8 @@ impl Plugin for SearchPlugin {
     }
 
     fn parameter_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "required": ["query"],
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Text or regex pattern to search for"
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Directory to search in (defaults to current directory)"
-                },
-                "regex": {
-                    "type": "boolean",
-                    "description": "Treat query as regex pattern",
-                    "default": false
-                },
-                "case_sensitive": {
-                    "type": "boolean",
-                    "description": "Case sensitive search",
-                    "default": false
-                },
-                "max_results": {
-                    "type": "number",
-                    "description": "Maximum number of results to return",
-                    "default": 100
-                }
-            }
-        })
+        let schema = schema_for!(SearchParams);
+        serde_json::to_value(schema).unwrap()
     }
 
     fn required_permission(&self) -> Permission {
@@ -85,11 +66,12 @@ impl Plugin for SearchPlugin {
     async fn execute(&self, input: Value) -> Result<PluginOutput> {
         let params: SearchParams = serde_json::from_value(input)
             .map_err(|e| PluginError::InvalidInput(format!("Invalid parameters: {}", e)))?;
-        
-        let search_path = params.path
+
+        let search_path = params
+            .path
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
-        
+
         let matcher = if params.regex {
             let pattern = if params.case_sensitive {
                 &params.query
@@ -107,10 +89,10 @@ impl Plugin for SearchPlugin {
             };
             Regex::new(&pattern).unwrap()
         };
-        
+
         let mut results = Vec::new();
         let mut count = 0;
-        
+
         for entry in WalkDir::new(&search_path)
             .follow_links(true)
             .into_iter()
@@ -119,17 +101,17 @@ impl Plugin for SearchPlugin {
             if !entry.file_type().is_file() {
                 continue;
             }
-            
+
             if count >= params.max_results {
                 break;
             }
-            
+
             let path = entry.path();
-            
+
             if should_skip(path, &params.exclude_patterns) {
                 continue;
             }
-            
+
             if let Ok(content) = tokio::fs::read_to_string(path).await {
                 for (line_num, line) in content.lines().enumerate() {
                     if matcher.is_match(line) {
@@ -139,7 +121,7 @@ impl Plugin for SearchPlugin {
                             "content": line.trim()
                         }));
                         count += 1;
-                        
+
                         if count >= params.max_results {
                             break;
                         }
@@ -147,15 +129,16 @@ impl Plugin for SearchPlugin {
                 }
             }
         }
-        
+
         let result_json = serde_json::json!({
             "summary": format!("Found {} matches", results.len()),
             "results": results
         });
-        
-        Ok(PluginOutput::new(serde_json::to_string_pretty(&result_json).unwrap()))
-    }
 
+        Ok(PluginOutput::new(
+            serde_json::to_string_pretty(&result_json).unwrap(),
+        ))
+    }
 }
 
 fn should_skip(path: &std::path::Path, exclude_patterns: &[String]) -> bool {

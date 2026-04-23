@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 //! nucleus-core - Core AI engine infrastructure
 //!
 //! Provides the foundational components for building AI-powered applications:

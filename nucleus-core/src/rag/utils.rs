@@ -72,10 +72,7 @@ fn find_subdirectories_recursive<'a>(
 ///
 /// `true` if the directory contains at least one file with a matching extension.
 ///
-pub async fn contains_indexable_files(
-    dir_path: impl AsRef<Path>,
-    extensions: &[String],
-) -> bool {
+pub async fn contains_indexable_files(dir_path: impl AsRef<Path>, extensions: &[String]) -> bool {
     let mut entries = match fs::read_dir(dir_path).await {
         Ok(e) => e,
         Err(_) => return false,
@@ -139,7 +136,9 @@ mod tests {
         let base = temp.path();
 
         // Create a test file
-        fs::write(base.join("test.rs"), "fn main() {}").await.unwrap();
+        fs::write(base.join("test.rs"), "fn main() {}")
+            .await
+            .unwrap();
 
         let extensions = vec!["rs".to_string()];
         assert!(contains_indexable_files(base, &extensions).await);

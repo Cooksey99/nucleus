@@ -7,10 +7,10 @@ use thiserror::Error;
 pub enum DetectionError {
     #[error("Ollama is not installed or not in PATH")]
     NotInstalled,
-    
+
     #[error("Ollama is installed but not running")]
     NotRunning,
-    
+
     #[error("Failed to check Ollama status: {0}")]
     CheckFailed(String),
 }
@@ -18,15 +18,15 @@ pub enum DetectionError {
 pub type Result<T> = std::result::Result<T, DetectionError>;
 
 /// Checks if Ollama is available and provides helpful guidance if not.
-/// 
+///
 /// This is called automatically when creating a Server, but can also be
 /// called manually to verify Ollama is available before attempting operations.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```no_run
 /// use nucleus_core::detection;
-/// 
+///
 /// match detection::detect_ollama() {
 ///     Ok(_) => println!("Ready to go!"),
 ///     Err(e) => eprintln!("Setup required: {}", e),
@@ -37,7 +37,7 @@ pub fn detect_ollama() -> Result<OllamaInfo> {
         print_installation_help();
         return Err(DetectionError::NotInstalled);
     }
-    
+
     match is_ollama_running() {
         Ok(true) => Ok(OllamaInfo {
             installed: true,
@@ -55,13 +55,13 @@ pub fn detect_ollama() -> Result<OllamaInfo> {
 }
 
 /// Quietly checks if Ollama is available without printing help messages.
-/// 
+///
 /// Useful for programmatic checks where you want to handle the error yourself.
 pub fn check_ollama_silent() -> Result<OllamaInfo> {
     if !is_ollama_installed() {
         return Err(DetectionError::NotInstalled);
     }
-    
+
     match is_ollama_running() {
         Ok(true) => Ok(OllamaInfo {
             installed: true,
@@ -92,7 +92,7 @@ fn is_ollama_running() -> std::result::Result<bool, String> {
         .arg("list")
         .output()
         .map_err(|e| e.to_string())?;
-    
+
     Ok(output.status.success())
 }
 
@@ -102,23 +102,23 @@ fn print_installation_help() {
     eprintln!("  Nucleus requires Ollama to be installed.");
     eprintln!();
     eprintln!("  Install Ollama:");
-    
+
     #[cfg(target_os = "macos")]
     {
         eprintln!("   • macOS:  curl -fsSL https://ollama.ai/install.sh | sh");
         eprintln!("   • Or:     brew install ollama");
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         eprintln!("   • Linux:  curl -fsSL https://ollama.ai/install.sh | sh");
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         eprintln!("   • Windows: Download from https://ollama.ai/download");
     }
-    
+
     eprintln!();
     eprintln!("  After installation, pull a model:");
     eprintln!("   ollama pull qwen2.5-coder:1.5b    (recommended, ~1GB)");
@@ -131,18 +131,18 @@ fn print_startup_help() {
     eprintln!("❌ Ollama is installed but not running!");
     eprintln!();
     eprintln!("  Start Ollama:");
-    
+
     #[cfg(target_os = "macos")]
     {
         eprintln!("   • Run the Ollama app from Applications");
         eprintln!("   • Or:  ollama serve  (in a separate terminal)");
     }
-    
+
     #[cfg(not(target_os = "macos"))]
     {
         eprintln!("   ollama serve");
     }
-    
+
     eprintln!();
     eprintln!("  Verify it's running:");
     eprintln!("   ollama list");

@@ -29,10 +29,14 @@
 
 use crate::config::Config;
 use crate::models::EmbeddingModel;
-use crate::provider::{ChatRequest, ChatResponse, Message, MistralRsProvider, Provider, Tool, ToolCall, ToolFunction};
+use crate::provider::{
+    create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, StructuredOutput,
+    Tool, ToolCall, ToolFunction,
+};
 use crate::rag::RagEngine;
-use nucleus_plugin::PluginRegistry;
 use anyhow::{Context, Result};
+use futures::future::join_all;
+use nucleus_plugin::{Permission, PluginRegistry};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -75,13 +79,15 @@ use tracing::{debug, info};
 /// - All conversation history is maintained for context
 pub struct ChatManager {
     /// Nucleus core configuration
-    config: Config,
+    pub config: Config,
     /// LLM provider for communication
     provider: Arc<dyn Provider>,
     /// Registry for available plugins/tools
     registry: Arc<PluginRegistry>,
     /// RAG manager for knowledge base integration (with persistent storage)
-    rag_engine:  Arc<RagEngine>,
+    rag_engine: Option<Arc<RagEngine>>,
+    /// Optional JSON schema for forcing a structured JSON output
+    pub structured_output: Option<StructuredOutput>,
 }
 
 impl ChatManager {
@@ -109,8 +115,12 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn new(config: Config, registry: PluginRegistry) -> Result<Self> {
-        Self::builder(config, registry).build().await
+    pub async fn new(config: Config, registry: impl Into<Arc<PluginRegistry>>) -> Result<Self> {
+        Self::builder()
+            .with_config(config)
+            .with_registry(registry.into())
+            .build()
+            .await
     }
 
     /// Creates a builder for configuring the chat manager.
@@ -143,10 +153,10 @@ impl ChatManager {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn builder(config: Config, registry: PluginRegistry) -> ChatManagerBuilder {
-        ChatManagerBuilder::new(config, registry)
+    fn builder() -> ChatManagerBuilder {
+        ChatManagerBuilder::new()
     }
-    
+
     ///
     /// # Examples
     ///
@@ -159,18 +169,18 @@ impl ChatManager {
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
     /// let registry = PluginRegistry::new(Permission::READ_ONLY);
-    /// 
+    ///
     /// let manager = ChatManager::new(config, registry).await?
     ///     .with_provider(Arc::new(MistralRsProvider::new("qwen3:0.6b"))).await?;
     /// # Ok(())
     /// # }
     /// ```
     pub async fn with_provider(mut self, provider: Arc<dyn Provider>) -> Result<Self> {
-        self.rag_engine = Arc::new(RagEngine::new(&self.config, provider.clone()).await?);
+        self.rag_engine = Some(Arc::new(RagEngine::new(&self.config, provider.clone()).await?));
         self.provider = provider;
         Ok(self)
     }
-    
+
     /// Replace the RAG manager.
     ///
     /// # Examples
@@ -184,7 +194,7 @@ impl ChatManager {
     /// let config = Config::load_or_default();
     /// let registry = PluginRegistry::new(Permission::READ_ONLY);
     /// let provider = Arc::new(/* create provider */);
-    /// 
+    ///
     /// let custom_rag = RagEngine::new(&config, provider).await?;
     /// let manager = ChatManager::new(config, registry).await?
     ///     .with_rag(custom_rag);
@@ -192,10 +202,10 @@ impl ChatManager {
     /// # }
     /// ```
     pub fn with_rag(mut self, rag: Arc<RagEngine>) -> Self {
-        self.rag_engine = rag;
+        self.rag_engine = Some(rag);
         self
     }
-    
+
     /// Loads previously indexed documents from persistent storage.
     ///
     /// Should be called after creating the ChatManager to restore the knowledge base.
@@ -223,9 +233,12 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn knowledge_base_count(&self) -> usize {
-        self.rag_engine.count().await
+        match self.rag_engine.as_ref() {
+            Some(engine) => engine.count().await,
+            None => 0
+        }
     }
-    
+
     /// Indexes a directory into the knowledge base.
     ///
     /// # Arguments
@@ -240,8 +253,20 @@ impl ChatManager {
     ///
     /// Returns an error if indexing fails.
     pub async fn index_directory(&self, dir_path: &Path) -> Result<usize> {
-        self.rag_engine.index_directory(dir_path).await
-            .context("Failed to index directory")
+        match self.rag_engine.as_ref() {
+            Some(engine) => engine.index_directory(dir_path).await.context("Failed to index directory"),
+            None => Err(anyhow::anyhow!("RAG Engine not configured"))
+        }
+    }
+
+    /// Sets the structured output for the `ChatManager`.
+    pub fn set_structured_output(&mut self, schema: serde_json::Value) {
+        self.structured_output = Some(StructuredOutput::new(schema));
+    }
+
+    /// Removed any previously set `structured_output` JSON schema from `ChatManager`
+    pub fn clear_structured_output(&mut self) {
+        self.structured_output = None;
     }
 
     /// Sends a query to the LLM and returns the final response.
@@ -254,6 +279,8 @@ impl ChatManager {
     ///
     /// # Arguments
     ///
+    /// * `messages` - Optional custom conversation history. If provided, this replaces
+    ///   the default message preparation and uses the exact messages provided.
     /// * `user_message` - The user's question or prompt
     ///
     /// # Returns
@@ -276,8 +303,10 @@ impl ChatManager {
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
     /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
-    /// # let manager = ChatManager::new(config, registry);
-    /// let response = manager.query("Summarize the README file").await?;
+    /// # let manager = ChatManager::new(config, registry).await?;
+    ///
+    /// // Simple query (no conversation history)
+    /// let response = manager.query("Summarize the README file", None).await?;
     /// println!("Response: {}", response);
     /// # Ok(())
     /// # }
@@ -295,10 +324,14 @@ impl ChatManager {
     /// 4. If no tool calls, return the response
     ///
     /// The loop ensures the LLM can chain multiple tool calls if needed.
-    pub async fn query(&self, user_message: &str) -> Result<String> {
-        self.query_stream(user_message, |_| {}).await
+    pub async fn query(
+        &self,
+        messages: Option<&Vec<Message>>,
+        user_message: &str,
+    ) -> Result<String> {
+        self.query_stream(messages, user_message, |_| {}).await
     }
-    
+
     /// Send a query to the LLM and stream the response through a callback.
     ///
     /// This is the streaming version of [`query`](Self::query). It allows you to
@@ -307,6 +340,8 @@ impl ChatManager {
     ///
     /// # Arguments
     ///
+    /// * `messages` - Optional custom conversation history. If provided, this replaces
+    ///   the default message preparation and uses the exact messages provided.
     /// * `user_message` - The user's question or prompt
     /// * `on_chunk` - Callback invoked for each chunk of streaming content.
     ///   Receives the incremental content (not accumulated).
@@ -327,47 +362,29 @@ impl ChatManager {
     /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
     /// # let manager = ChatManager::new(config, registry).await?;
     /// // Print response as it streams
-    /// let response = manager.query_stream("Tell me a story", |chunk| {
+    /// let response = manager.query_stream(None, "Tell me a story", |chunk| {
     ///     print!("{}", chunk);
     ///     io::stdout().flush().unwrap();
     /// }).await?;
-    /// println!("\n\nFinal response: {}", response);
+    /// println!("Final response: {}", response);
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn query_stream<F>(&self, user_message: &str, mut on_chunk: F) -> Result<String>
+    pub async fn query_stream<F>(
+        &self,
+        messages: Option<&Vec<Message>>,
+        user_message: &str,
+        mut on_chunk: F,
+    ) -> Result<String>
     where
         F: FnMut(&str) + Send,
     {
-        // Retrieve relevant context from knowledge base if available
-        let rag_count = self.rag_engine.count().await;
-        debug!("RAG knowledge base has {} documents", rag_count);
-        
-        // Context retrieved from RAG
-        let context = if rag_count > 0 {
-            debug!("Retrieving RAG context for query: {}", user_message);
-            self.rag_engine.retrieve_context(user_message).await
-                .unwrap_or_else(|e| {
-                    debug!("Could not retrieve RAG context: {}", e);
-                    String::new()
-                })
-        } else {
-            debug!("RAG knowledge base is empty, skipping context retrieval");
-            String::new()
+        let (context, mut messages) = match messages {
+            Some(messages) => (String::new(), messages.clone()),
+            None => self.prepare_messages(user_message).await,
         };
-        
-        // Construct user message with context if available
-        let enhanced_message = if !context.is_empty() {
-            debug!("Enhanced message with {} characters of RAG context", context.len());
-            format!("{}{}", context, user_message)
-        } else {
-            debug!("No RAG context available, using original message");
-            user_message.to_string()
-        };
-        
-        let mut messages = vec![Message::user(Some(context.clone()), &enhanced_message)];
 
-        let tools = self.build_tools();
+        let tools = self.build_tools().await;
 
         loop {
             let mut request = ChatRequest::new(&self.config.llm.model, messages.clone())
@@ -377,45 +394,209 @@ impl ChatManager {
                 request.tools = Some(tools.clone());
             }
 
-            // Stream the LLM response, accumulating content and preserving tool calls.
-            // Important: Tool calls may arrive in early chunks while content streams,
-            // so we must preserve them separately from the final chunk.
-            let mut accumulated_content = String::new();
-            let mut current_response: Option<ChatResponse> = None;
-            let mut tool_calls: Option<Vec<ToolCall>> = None;
-            self.provider
-                .chat(request, Box::new(|response| {
-                    // Call user's streaming callback with incremental content
+            if let Some(structured_output) = &self.structured_output {
+                request = request.with_structured_output(structured_output.clone());
+            }
+
+            let assistant_message = self.process_response_stream(request, &mut on_chunk).await?;
+
+            if let Some(tool_calls) = assistant_message.tool_calls {
+                let mut new_messages = messages.clone();
+                new_messages.push(Message {
+                    role: "assistant".to_string(),
+                    context: Some(context.clone()),
+                    content: assistant_message.content.clone(),
+                    images: None,
+                    tool_calls: Some(tool_calls.clone()),
+                });
+
+                for tool_call in tool_calls {
+                    let result = self
+                        .registry
+                        .execute(
+                            &tool_call.function.name,
+                            tool_call.function.arguments.clone(),
+                        )
+                        .await?;
+
+                    new_messages.push(Message {
+                        role: "tool".to_string(),
+                        context: Some(context.clone()),
+                        content: result.content,
+                        images: None,
+                        tool_calls: None,
+                    });
+                }
+
+                messages = new_messages;
+                continue;
+            }
+
+            return Ok(assistant_message.content);
+        }
+    }
+
+    /// Converts registered plugins into tool definitions.
+    ///
+    /// Transforms plugins from the registry into the JSON schema format
+    /// Each plugin becomes a tool with its name, description, and parameter schema.
+    ///
+    /// # Note
+    ///
+    /// This method is called once at the start of each query. Tools are
+    /// included in every LLM request throughout the conversation loop.
+    async fn build_tools(&self) -> Vec<Tool> {
+        join_all(self.registry.all().iter().map(async move |plugin| {
+            let plugin = plugin.lock().await;
+            let spec = plugin.parameter_schema();
+            Tool {
+                tool_type: "function".to_string(),
+                function: ToolFunction {
+                    name: plugin.name().to_string(),
+                    description: plugin.description().to_string(),
+                    parameters: spec,
+                },
+            }
+        }))
+        .await
+    }
+
+    /// Prepare initial messages with RAG context.
+    ///
+    /// Retrieves relevant context from the knowledge base and constructs
+    /// the initial user message with enhanced context if available.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_message` - The original user query
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (context, messages) where context is the retrieved RAG context
+    /// and messages is a vector containing the initial user message.
+    async fn prepare_messages(&self, user_message: &str) -> (String, Vec<Message>) {
+        let (rag_count, context) = match self.rag_engine.as_ref() {
+            Some(engine) => {
+                let count = engine.count().await;
+                debug!("RAG knowledge base has {} documents", count);
+                
+                if count > 0 {
+                    debug!("Retrieving RAG context for query: {}", user_message);
+                    let ctx = engine
+                        .retrieve_context(user_message)
+                        .await
+                        .unwrap_or_else(|e| {
+                            debug!("Could not retrieve RAG context: {}", e);
+                            String::new()
+                        });
+                    (count, ctx)
+                } else {
+                    debug!("RAG knowledge base is empty, skipping context retrieval");
+                    (count, String::new())
+                }
+            }
+            None => {
+                debug!("RAG engine not configured, skipping context retrieval");
+                (0, String::new())
+            }
+        };
+
+        let enhanced_message = if !context.is_empty() {
+            debug!(
+                "Enhanced message with {} characters of RAG context",
+                context.len()
+            );
+            format!("{}{}", context, user_message)
+        } else {
+            debug!("No RAG context available, using original message");
+            user_message.to_string()
+        };
+
+        let messages = vec![Message::user(Some(context.clone()), &enhanced_message)];
+
+        (context, messages)
+    }
+
+    /// Process LLM response stream and accumulate content.
+    ///
+    /// Handles streaming response chunks, accumulates content, and preserves
+    /// tool calls from any chunk in the stream.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The chat request to send to the LLM
+    /// * `on_chunk` - Callback for streaming content chunks
+    ///
+    /// # Returns
+    ///
+    /// The complete assistant message with accumulated content and preserved tool calls.
+    async fn process_response_stream<F>(
+        &self,
+        request: ChatRequest,
+        mut on_chunk: F,
+    ) -> Result<Message>
+    where
+        F: FnMut(&str) + Send,
+    {
+        let mut accumulated_content = String::new();
+        let mut final_response: Option<ChatResponse> = None;
+        let mut tool_calls: Option<Vec<ToolCall>> = None;
+
+        self.provider
+            .chat(
+                request,
+                Box::new(|response| {
                     if !response.done && !response.content.is_empty() {
                         on_chunk(&response.content);
+                        accumulated_content.push_str(&response.content);
                     }
-                    
-                    // Accumulate incremental content (response.content), not full message
-                    accumulated_content.push_str(&response.content);
-                    
-                    // Preserve tool calls from any chunk - they typically arrive early
-                    // in the stream and may be absent from the final done=true chunk
-                    if let Some(ref tool_calls_ref) = response.message.tool_calls {
-                        tool_calls = Some(tool_calls_ref.clone());
+
+                    if let Some(ref calls) = response.message.tool_calls {
+                        tool_calls = Some(calls.clone());
                     }
-                    
-                    current_response = Some(response);
-                }))
-                .await
-                .context("Failed to get LLM response")?;
 
-            let mut response = current_response
-                .context("No response from LLM")?;
+                    final_response = Some(response);
+                }),
+            )
+            .await
+            .context("Failed to get LLM response")?;
 
-            // Reconstruct the complete message with accumulated content and preserved tool calls
-            response.message.content = accumulated_content;
-            response.message.tool_calls = tool_calls;
-            let assistant_message = response.message;
+        let mut response = final_response.context("No response from LLM")?;
+        response.message.content = accumulated_content;
+        response.message.tool_calls = tool_calls;
 
-            // Handle tool calls: execute each tool and add results to conversation
+        Ok(response.message)
+    }
+    /// Handle tool execution loop.
+    ///
+    /// Executes tools requested by the LLM and continues the conversation
+    /// until a final non-tool response is received.
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - Current conversation messages
+    /// * `context` - RAG context for this conversation
+    ///
+    /// # Returns
+    ///
+    /// The final LLM response after all tool executions are complete.
+    async fn handle_tools(&self, messages: Vec<Message>, context: String) -> Result<String> {
+        let tools = self.build_tools().await;
+
+        let mut current_messages = messages;
+        loop {
+            let mut request = ChatRequest::new(&self.config.llm.model, current_messages.clone())
+                .with_temperature(self.config.llm.temperature);
+
+            if !tools.is_empty() {
+                request.tools = Some(tools.clone());
+            }
+
+            let assistant_message = self.process_response_stream(request, |_| {}).await?;
+
             if let Some(tool_calls) = &assistant_message.tool_calls {
-                // Add the assistant's message with tool calls to conversation history
-                messages.push(Message {
+                // Add assistant message with tool calls to history
+                current_messages.push(Message {
                     role: "assistant".to_string(),
                     context: Some(context.to_string()),
                     content: assistant_message.content.clone(),
@@ -423,7 +604,7 @@ impl ChatManager {
                     tool_calls: Some(tool_calls.clone()),
                 });
 
-                // Execute each requested tool and add results
+                // Execute each requested tool
                 for tool_call in tool_calls {
                     let tool_name = &tool_call.function.name;
                     let tool_args = &tool_call.function.arguments;
@@ -435,8 +616,8 @@ impl ChatManager {
                         .await
                         .with_context(|| format!("Failed to execute tool: {}", tool_name))?;
 
-                    // Add tool result as a message for the LLM to synthesize
-                    messages.push(Message {
+                    // Add tool result to conversation
+                    current_messages.push(Message {
                         role: "tool".to_string(),
                         context: Some(context.to_string()),
                         content: result.content,
@@ -444,44 +625,13 @@ impl ChatManager {
                         tool_calls: None,
                     });
                 }
-                // Continue loop to get LLM's response using the tool results
+
+                // Continue loop to get LLM's response using tool results
             } else {
-                // No tool calls - this is the final response
+                // No tool calls - return final response
                 return Ok(assistant_message.content);
             }
         }
-    }
-
-    /// Converts registered plugins into Ollama tool definitions.
-    ///
-    /// Transforms plugins from the registry into the JSON schema format
-    /// expected by Ollama's tool calling API. Each plugin becomes a tool
-    /// with its name, description, and parameter schema.
-    ///
-    /// # Returns
-    ///
-    /// A vector of tool definitions to send with LLM requests.
-    ///
-    /// # Note
-    ///
-    /// This method is called once at the start of each query. Tools are
-    /// included in every LLM request throughout the conversation loop.
-    fn build_tools(&self) -> Vec<Tool> {
-        self.registry
-            .all()
-            .iter()
-            .map(|plugin| {
-                let spec = plugin.parameter_schema();
-                Tool {
-                    tool_type: "function".to_string(),
-                    function: ToolFunction {
-                        name: plugin.name().to_string(),
-                        description: plugin.description().to_string(),
-                        parameters: spec,
-                    },
-                }
-            })
-            .collect()
     }
 }
 
@@ -528,22 +678,37 @@ impl ChatManager {
 /// ```
 pub struct ChatManagerBuilder {
     config: Config,
-    registry: PluginRegistry,
+    registry: Arc<PluginRegistry>,
     llm_model_override: Option<String>,
     embedding_model_override: Option<EmbeddingModel>,
+    provider_type_override: Option<ProviderType>,
+    structured_output: Option<StructuredOutput>,
 }
 
 impl ChatManagerBuilder {
     /// Creates a new builder with the given config and registry.
-    pub fn new(config: Config, registry: PluginRegistry) -> Self {
+    pub fn new() -> Self {
+        let config = Config::default();
+        let registry = Arc::new(PluginRegistry::new(Permission::NONE));
         Self {
             config,
             registry,
             llm_model_override: None,
             embedding_model_override: None,
+            provider_type_override: None,
+            structured_output: None,
         }
     }
 
+    pub fn with_config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn with_registry(mut self, registry: impl Into<Arc<PluginRegistry>>) -> Self {
+        self.registry = registry.into();
+        self
+    }
     /// Override the default LLM model from the configuration.
     ///
     /// Accepts a model identifier, which may be:
@@ -578,7 +743,7 @@ impl ChatManagerBuilder {
     /// # Ok(())
     /// # }
     /// ````
-    /// 
+    ///
     /// **Local GGUF Blob (Ollama) — NOT CURRENTLY SUPPORTED**
     /// ```
     /// let manager = ChatManager::builder(config, registry)
@@ -617,6 +782,38 @@ impl ChatManagerBuilder {
         self
     }
 
+    /// Override the provider type.
+    ///
+    /// This allows you to specify which LLM provider to use (Ollama, MistralRs, or CoreML).
+    /// The provider will be constructed automatically using the config and registry.
+    ///
+    /// # Arguments
+    ///
+    /// * `provider_type` - The type of provider to use
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{ChatManager, Config};
+    /// # use nucleus_core::provider::ProviderType;
+    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let config = Config::load_or_default();
+    /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let manager = ChatManager::builder()
+    ///     .with_config(config)
+    ///     .with_registry(registry)
+    ///     .with_provider(ProviderType::CoreML)
+    ///     .build()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_provider(mut self, provider_type: ProviderType) -> Self {
+        self.provider_type_override = Some(provider_type);
+        self
+    }
+
     /// Builds the `ChatManager` with the configured settings.
     ///
     /// This initializes the provider with the (possibly overridden) LLM model,
@@ -628,26 +825,34 @@ impl ChatManagerBuilder {
     /// - The provider fails to initialize
     /// - The RAG system fails to initialize
     pub async fn build(self) -> Result<ChatManager> {
-        let mut config = self.config;
+        let mut config = self.config.clone();
 
         if let Some(llm_model) = self.llm_model_override {
             config.llm.model = llm_model;
         }
-        if let Some(embedding_model) = self.embedding_model_override {
-            config.rag.embedding_model = embedding_model;
+
+        if let Some(provider_type) = self.provider_type_override {
+            config.llm.provider = provider_type.as_str().to_string();
         }
 
-        let registry = Arc::new(self.registry);
-        let provider: Arc<dyn Provider> = Arc::new(
-            MistralRsProvider::new(&config, Arc::clone(&registry)).await?
-        );
-        let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
+        let provider = create_provider(&config, Arc::clone(&self.registry)).await?;
+        let mut rag_engine = None;
+
+        if self.config.rag.clone().is_some() {
+            if let Some(embedding_model) = self.embedding_model_override {
+                config.rag.clone().unwrap().embedding_model = embedding_model;
+            }
+
+            let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
+        }
+
 
         Ok(ChatManager {
             config,
             provider,
-            registry,
+            registry: self.registry,
             rag_engine,
+            structured_output: self.structured_output,
         })
     }
 }

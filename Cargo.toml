@@ -5,7 +5,6 @@ members = [
     "nucleus-plugin",
     "nucleus-std",
     "nucleus-dev",
-    "nucleus-cli",
 ]
 
 [workspace.package]
@@ -33,15 +32,18 @@ nucleus-std = { workspace = true, optional = true }
 nucleus-dev = { workspace = true, optional = true }
 async-trait.workspace = true
 dirs = "6.0.0"
+schemars.workspace = true
+tokio.workspace = true
 
 [features]
 default = ["std"]
 std = ["nucleus-std"]
 dev = ["nucleus-dev"]
 full = ["std", "dev"]
-# GPU acceleration (pass-through to nucleus-core)
+# GPU/ML acceleration (pass-through to nucleus-core)
 metal = ["nucleus-core/metal"]
 cuda = ["nucleus-core/cuda"]
+coreml = ["nucleus-core/coreml"]
 
 [dev-dependencies]
 tokio.workspace = true
@@ -55,10 +57,16 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 [profile.dev.package."*"]
 opt-level = 2
 
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+
 [workspace.dependencies]
 # Shared dependencies across workspace
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = "1.0.149"
 serde_yaml = "0.9"
 thiserror = "2.0"
 tokio = { version = "1", features = ["full"] }
@@ -67,6 +75,7 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 futures = "0.3"
 anyhow = "1.0"
 async-trait = "0.1"
+schemars = "1.2.0"
 
 # Workspace crates
 nucleus-core = { path = "nucleus-core", version = "0.1.0" }

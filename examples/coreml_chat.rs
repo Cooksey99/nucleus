@@ -1,7 +1,6 @@
 use std::io::{self, Write};
 
-use nucleus::{ChatManager, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
+use nucleus::{ChatManagerBuilder, provider::ProviderType};
 
 #[tokio::main]
 async fn main() {
@@ -12,24 +11,23 @@ async fn main() {
         )
         .init();
 
-    let config = Config::load_or_default();
-    let registry = PluginRegistry::new(Permission::NONE);
-    let manager = ChatManager::new(config, registry)
+    let manager = ChatManagerBuilder::new()
+        .with_provider(ProviderType::CoreML)
+        .with_llm_model("models/Llama-3.1-8B-Instruct-CoreML/llama_3.1_coreml.mlpackage")
+        .build()
         .await
         .expect("Failed to create chat manager");
 
-    loop {
-        println!("Enter message:");
-        std::io::stdout().flush().unwrap();
-
-        let mut message = String::new();
-        std::io::stdin().read_line(&mut message).expect("Unable to read line");
+    let message = "Write me a short poem about Rust programming";
+    println!("User: {}", message);
+    println!("\nAssistant: ");
+    io::stdout().flush().unwrap();
 
     // Stream response with live printing
     let start = std::time::Instant::now();
     let mut token_count = 0;
     let response = manager
-        .query_stream(None, message.as_str(), |chunk| {
+        .query_stream(None, message, |chunk| {
             print!("{}", chunk);
             io::stdout().flush().unwrap();
             // Rough token estimation: ~4 chars per token
@@ -47,6 +45,4 @@ async fn main() {
         "Est. throughput: {:.1} tok/s",
         token_count as f64 / elapsed.as_secs_f64()
     );
-    }
-
 }

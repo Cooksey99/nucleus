@@ -1,8 +1,7 @@
 // The initial indexing in this example can take a few minutes
 
-use nucleus::{ChatManager, Config};
+use nucleus::{ChatManagerBuilder, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
-
 
 #[tokio::main]
 async fn main() {
@@ -11,16 +10,20 @@ async fn main() {
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("nucleus_core=off".parse().unwrap())
-                .add_directive("mistralrs_core=info".parse().unwrap())
+                .add_directive("mistralrs_core=info".parse().unwrap()),
         )
         .init();
 
     let config = Config::load_or_default();
     let registry = PluginRegistry::new(Permission::READ_ONLY);
 
-    let manager = ChatManager::builder(config, registry)
+    let manager = ChatManagerBuilder::new()
+        .with_config(config)
+        .with_registry(registry)
         .with_llm_model("Qwen/Qwen3-8B")
-        .build().await.unwrap();    
+        .build()
+        .await
+        .unwrap();
     let doc_count = manager.knowledge_base_count().await;
 
     println!("Starting with {} docs\n\n", doc_count);
@@ -28,7 +31,8 @@ async fn main() {
     let home = format!(
         "{}/.cache/huggingface/token",
         dirs::home_dir()
-            .ok_or("Home directory missing").unwrap()
+            .ok_or("Home directory missing")
+            .unwrap()
             .display()
     );
 
@@ -37,23 +41,27 @@ async fn main() {
     println!("HOME: {}", token.unwrap());
 
     let path = dirs::home_dir()
-        .ok_or("Home directory missing").unwrap()
+        .ok_or("Home directory missing")
+        .unwrap()
         .join("development/nucleus/nucleus-core/src");
     println!("Path: {}", path.display());
-    
+
     match manager.index_directory(&path).await {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             eprintln!("Error indexing directory: {:?}", e);
             std::process::exit(1);
         }
     }
-    
-    println!("Added {} docs\n\n", manager.knowledge_base_count().await - doc_count);
+
+    println!(
+        "Added {} docs\n\n",
+        manager.knowledge_base_count().await - doc_count
+    );
 
     let mut input = String::new();
 
-    loop {        
+    loop {
         println!("Enter message: ");
 
         std::io::stdin().read_line(&mut input).unwrap();
@@ -61,12 +69,13 @@ async fn main() {
             break;
         }
 
-        manager.query_stream(&input, |chunk| {
-            print!("{}", chunk);
-        }).await.unwrap();
+        manager
+            .query_stream(None, &input, |chunk| {
+                print!("{}", chunk);
+            })
+            .await
+            .unwrap();
 
         println!("\n")
     }
-
-    
 }

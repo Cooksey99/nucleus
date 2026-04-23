@@ -10,7 +10,7 @@ mod commands;
 mod files;
 mod search;
 
+pub use commands::ExecPlugin;
 pub use files::{ReadFilePlugin, WriteFilePlugin};
 pub use search::SearchPlugin;
 // TODO: Implement ListDirectoryPlugin
-// TODO: Implement command execution

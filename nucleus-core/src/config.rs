@@ -23,7 +23,7 @@ pub type Result<T> = std::result::Result<T, ConfigError>;
 pub struct Config {
     pub system_prompt: String,
     pub llm: LlmConfig,
-    pub rag: RagConfig,
+    pub rag: Option<RagConfig>,
     pub storage: StorageConfig,
     pub personalization: PersonalizationConfig,
 
@@ -58,10 +58,31 @@ impl Default for Permission {
 /// Configuration for the AI model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
+    /// Provider type: "ollama", "mistralrs", or "coreml"
+    #[serde(default = "default_provider")]
+    pub provider: String,
     pub model: String,
     pub base_url: String,
     pub temperature: f64,
     pub context_length: usize,
+    /// CoreML-specific: input feature name
+    #[serde(default = "default_input_name")]
+    pub coreml_input_name: String,
+    /// CoreML-specific: output feature name
+    #[serde(default = "default_output_name")]
+    pub coreml_output_name: String,
+}
+
+fn default_provider() -> String {
+    "mistralrs".to_string()
+}
+
+fn default_input_name() -> String {
+    "input".to_string()
+}
+
+fn default_output_name() -> String {
+    "output".to_string()
 }
 
 /// Configuration for RAG processing.
@@ -216,10 +237,13 @@ impl Default for StorageConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            model: "MaziyarPanahi/Qwen3-0.6B-GGUF:Qwen3-0.6B.Q4_K_M.gguf".to_string(), // Pre-quantized GGUF
-            base_url: "http://localhost:11434".to_string(), // For Ollama provider (if used)
+            provider: default_provider(),
+            model: "MaziyarPanahi/Qwen3-0.6B-GGUF:Qwen3-0.6B.Q4_K_M.gguf".to_string(),
+            base_url: "http://localhost:11434".to_string(),
             temperature: 0.6,
             context_length: 32768,
+            coreml_input_name: default_input_name(),
+            coreml_output_name: default_output_name(),
         }
     }
 }
@@ -231,7 +255,7 @@ impl Default for Config {
             system_prompt:
                 "You are a helpful AI assistant specializing in programming and development tasks."
                     .to_string(),
-            rag: RagConfig::default(),
+            rag: None,
             storage: StorageConfig::default(),
             personalization: PersonalizationConfig::default(),
             permission: Permission::default(),
@@ -253,6 +277,68 @@ impl Config {
     /// Load configuration from `config.yaml` if it exists, otherwise use defaults.
     pub fn load_or_default() -> Self {
         Self::load("config.yaml").unwrap_or_default()
+    }
+
+    /// Create a new Config with default values and builder-style configuration.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the LLM model identifier.
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.llm.model = model.into();
+        self
+    }
+
+    /// Set the temperature (0.0-2.0).
+    pub fn with_temperature(mut self, temperature: f64) -> Self {
+        self.llm.temperature = temperature;
+        self
+    }
+
+    /// Set the system prompt.
+    pub fn with_system_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.system_prompt = prompt.into();
+        self
+    }
+
+    /// Set the base URL for the LLM provider.
+    pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
+        self.llm.base_url = url.into();
+        self
+    }
+
+    /// Set the context length (maximum tokens).
+    pub fn with_context_length(mut self, length: usize) -> Self {
+        self.llm.context_length = length;
+        self
+    }
+
+    /// Set the LLM provider type.
+    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
+        self.llm.provider = provider.into();
+        self
+    }
+
+    /// Configure RAG settings.
+    pub fn with_rag_config(mut self, rag_config: RagConfig) -> Self {
+        self.rag = Some(rag_config);
+        self
+    }
+
+    /// Configure storage settings.
+    pub fn with_storage_config(mut self, storage_config: StorageConfig) -> Self {
+        self.storage = storage_config;
+        self
+    }
+
+    /// Configure personalization settings.
+    pub fn with_personalization_config(
+        mut self,
+        personalization_config: PersonalizationConfig,
+    ) -> Self {
+        self.personalization = personalization_config;
+        self
     }
 }
 

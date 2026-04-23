@@ -6,18 +6,37 @@ use thiserror::Error;
 
 use crate::models::EmbeddingModel;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderType {
+    Ollama,
+    MistralRs,
+    #[cfg(any(target_os = "macos", feature = "coreml"))]
+    CoreML,
+}
+
+impl ProviderType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ProviderType::Ollama => "ollama",
+            ProviderType::MistralRs => "mistralrs",
+            #[cfg(any(target_os = "macos", feature = "coreml"))]
+            ProviderType::CoreML => "coreml",
+        }
+    }
+}
+
 /// Errors that can occur when interacting with a provider.
 #[derive(Debug, Error)]
 pub enum ProviderError {
     #[error("HTTP request failed: {0}")]
     Request(#[from] reqwest::Error),
-    
+
     #[error("JSON parsing failed: {0}")]
     Json(#[from] serde_json::Error),
-    
+
     #[error("API error: {0}")]
     Api(String),
-    
+
     #[error("Provider error: {0}")]
     Other(String),
 }
@@ -38,10 +57,10 @@ pub trait Provider: Send + Sync {
         request: ChatRequest,
         callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()>;
-    
+
     /// Generate an embedding vector for the given text.
     async fn embed(&self, text: &str, model: &EmbeddingModel) -> Result<Vec<f32>>;
-    
+
     /// Generate embeddings for multiple texts in batch.
     /// Default implementation calls embed() sequentially.
     async fn embed_batch(&self, texts: &[&str], model: &EmbeddingModel) -> Result<Vec<Vec<f32>>> {
@@ -60,6 +79,7 @@ pub struct ChatRequest {
     pub messages: Vec<Message>,
     pub temperature: f64,
     pub tools: Option<Vec<Tool>>,
+    pub structured_output: Option<StructuredOutput>,
 }
 
 impl ChatRequest {
@@ -69,14 +89,20 @@ impl ChatRequest {
             messages,
             temperature: 0.7,
             tools: None,
+            structured_output: None,
         }
     }
-    
+
+    pub fn with_structured_output(mut self, structured_output: StructuredOutput) -> Self {
+        self.structured_output = Some(structured_output);
+        self
+    }
+
     pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.temperature = temperature;
         self
     }
-    
+
     pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = Some(tools);
         self
@@ -100,10 +126,10 @@ pub struct Message {
     pub context: Option<String>,
     /// Message input from the user
     pub content: String,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
 }
@@ -118,7 +144,7 @@ impl Message {
             tool_calls: None,
         }
     }
-    
+
     pub fn user(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "user".to_string(),
@@ -128,7 +154,7 @@ impl Message {
             tool_calls: None,
         }
     }
-    
+
     pub fn assistant(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "assistant".to_string(),
@@ -138,7 +164,7 @@ impl Message {
             tool_calls: None,
         }
     }
-    
+
     pub fn tool(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "tool".to_string(),
@@ -190,7 +216,51 @@ pub struct EmbedRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbedResponse {
     pub model: String,
-    
+
     #[serde(default)]
     pub embeddings: Vec<Vec<f32>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredOutput {
+    /// JSON schema to define the expected output structure
+    pub schema: serde_json::Value,
+    /// Optional description of what the structured output represents
+    pub description: Option<String>,
+    /// Optional example of the expected output format
+    ///
+    /// Adding this could improve the results
+    pub example: Option<serde_json::Value>,
+}
+
+impl StructuredOutput {
+    pub fn new(schema: serde_json::Value) -> Self {
+        Self {
+            schema,
+            description: None,
+            example: None,
+        }
+    }
+
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = Some(description);
+        self
+    }
+
+    pub fn with_example(mut self, example: serde_json::Value) -> Self {
+        self.example = Some(example);
+        self
+    }
+}
+
+impl From<serde_json::Value> for StructuredOutput {
+    fn from(schema: serde_json::Value) -> Self {
+        Self::new(schema)
+    }
+}
+
+impl From<StructuredOutput> for serde_json::Value {
+    fn from(output: StructuredOutput) -> Self {
+        serde_json::to_value(output).unwrap_or_default()
+    }
 }
