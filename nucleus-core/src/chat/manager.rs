@@ -259,6 +259,13 @@ impl ChatManager {
         }
     }
 
+    pub async fn index_text(&self, content: &str, source: &str) -> Result<()> {
+        match self.rag_engine.as_ref() {
+            Some(engine) => engine.add_knowledge(content, source).await.context("Failed to index text"),
+            None => Err(anyhow::anyhow!("RAG Engine not configured"))
+        }
+    }
+
     /// Sets the structured output for the `ChatManager`.
     pub fn set_structured_output(&mut self, schema: serde_json::Value) {
         self.structured_output = Some(StructuredOutput::new(schema));
