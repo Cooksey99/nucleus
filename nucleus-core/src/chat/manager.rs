@@ -37,6 +37,7 @@ use crate::rag::RagEngine;
 use anyhow::{Context, Result};
 use futures::future::join_all;
 use nucleus_plugin::{Permission, PluginRegistry};
+use tokio::sync::broadcast::error::SendError;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -262,6 +263,13 @@ impl ChatManager {
     pub async fn index_text(&self, content: &str, source: &str) -> Result<()> {
         match self.rag_engine.as_ref() {
             Some(engine) => engine.add_knowledge(content, source).await.context("Failed to index text"),
+            None => Err(anyhow::anyhow!("RAG Engine not configured"))
+        }
+    }
+
+    pub async fn clear_knowledge_base(&self) -> Result<()> {
+        match self.rag_engine.as_ref() {
+            Some(engine) => engine.clear().await.context("Unable to clear RAG knowledge base"),
             None => Err(anyhow::anyhow!("RAG Engine not configured"))
         }
     }
