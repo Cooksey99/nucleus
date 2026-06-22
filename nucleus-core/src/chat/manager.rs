@@ -274,6 +274,31 @@ impl ChatManager {
         }
     }
 
+    /// Returns whether RAG is configured on this manager.
+    pub fn is_rag_enabled(&self) -> bool {
+        self.rag_engine.is_some()
+    }
+
+    /// Retrieves the RAG context that would be used to augment a query.
+    ///
+    /// Returns an empty string when RAG is disabled, the knowledge base is empty,
+    /// or no relevant context is found.
+    pub async fn preview_rag_context(&self, query: &str) -> Result<String> {
+        match self.rag_engine.as_ref() {
+            Some(engine) => {
+                if engine.count().await == 0 {
+                    Ok(String::new())
+                } else {
+                    engine
+                        .retrieve_context(query)
+                        .await
+                        .context("Failed to retrieve RAG context")
+                }
+            }
+            None => Ok(String::new()),
+        }
+    }
+
     /// Sets the structured output for the `ChatManager`.
     pub fn set_structured_output(&mut self, schema: serde_json::Value) {
         self.structured_output = Some(StructuredOutput::new(schema));
@@ -853,12 +878,14 @@ impl ChatManagerBuilder {
         let provider = create_provider(&config, Arc::clone(&self.registry)).await?;
         let mut rag_engine = None;
 
-        if self.config.rag.clone().is_some() {
+        if config.rag.is_some() {
             if let Some(embedding_model) = self.embedding_model_override {
-                config.rag.clone().unwrap().embedding_model = embedding_model;
+                if let Some(rag_config) = config.rag.as_mut() {
+                    rag_config.embedding_model = embedding_model;
+                }
             }
 
-            let rag_engine = Arc::new(RagEngine::new(&config, provider.clone()).await?);
+            rag_engine = Some(Arc::new(RagEngine::new(&config, provider.clone()).await?));
         }
 
 
