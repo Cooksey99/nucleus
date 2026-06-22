@@ -1,100 +1,77 @@
-//! Example demonstrating RAG indexing with embedded storage.
+//! Example demonstrating RAG indexing with 5 specific knowledge items.
 //!
-//! This example shows how to:
-//! - Index directories into the RAG vector database
-//! - Configure persistent storage location
-//! - Query the indexed knowledge base
+//! Keeps setup intentionally minimal: load config, enable default RAG, index data, query data.
 
+use nucleus_core::config::StorageMode;
 use nucleus_core::{ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
-use std::path::Path;
+
+const VECTOR_DB_PATH: &str = "./data/nucleus_vectordb_rag_indexing";
+const COLLECTION_NAME: &str = "nucleus_kb_rag_indexing_example";
+
+const KNOWLEDGE_ITEMS: [(&str, &str); 5] = [
+    (
+        "Nucleus Architecture",
+        "Nucleus is built on a modular plugin architecture. Core components include the ChatManager for session management, PluginRegistry for plugin discovery and loading, and Config for runtime settings. The system uses an event-driven design with async/await throughout for high concurrency.",
+    ),
+    (
+        "Vector Database Storage",
+        "Nucleus supports embedded Qdrant for vector storage with persistence to disk. Documents are chunked into overlapping windows of 512 tokens with a 50-token overlap, then embedded using sentence-transformers models. The default embedding model is all-minilm:l6-v2 with 384 dimensions.",
+    ),
+    (
+        "RAG Pipeline",
+        "The RAG pipeline in Nucleus involves: 1) Document ingestion and chunking, 2) Embedding generation via Ollama, 3) Vector storage in Qdrant, 4) Semantic search for relevant chunks, 5) Context augmentation of LLM prompts. Hybrid search combining semantic and keyword matching is available.",
+    ),
+    (
+        "Plugin System",
+        "Plugins can extend Nucleus with new capabilities. Each plugin must implement the Plugin trait with name(), description(), and execute() methods. Plugins can be written in Rust and loaded dynamically, or connected via gRPC for remote plugins. Permission levels control read/write access.",
+    ),
+    (
+        "Configuration Options",
+        "Nucleus configuration is YAML-based. Key settings include: storage mode (embedded/grpc), vector DB collection name, embedding model selection, chunk size and overlap, and the list of enabled plugins. The config file is typically located at ~/.nucleus/config.yaml or ./nucleus.yaml.",
+    ),
+];
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    println!("Nucleus - RAG Indexing Example");
-    println!("==============================\n");
+    let mut config = Config::load_or_default().with_default_rag();
+    config.storage.storage_mode = StorageMode::Embedded {
+        path: VECTOR_DB_PATH.to_string(),
+    };
+    config.storage.vector_db.collection_name = COLLECTION_NAME.to_string();
 
-    let config = Config::load_or_default();
-    print_rag_config(&config);
+    let _ = std::fs::remove_dir_all(VECTOR_DB_PATH);
+    std::fs::create_dir_all(VECTOR_DB_PATH)?;
 
-    let registry = PluginRegistry::new(Permission::READ_WRITE);
-    let manager = ChatManager::new(config.clone(), registry).await?;
+    let manager = ChatManager::new(config, PluginRegistry::new(Permission::READ_WRITE)).await?;
+    println!("RAG enabled: {}", manager.is_rag_enabled());
 
-    let doc_count = manager.knowledge_base_count().await;
-    println!("Current knowledge base: {} documents\n", doc_count);
-
-    if doc_count == 0 {
-        index_example_directory(&manager).await;
+    manager.clear_knowledge_base().await?;
+    for (title, content) in KNOWLEDGE_ITEMS {
+        manager.index_text(content, title).await?;
     }
+    println!("Indexed {} documents.", manager.knowledge_base_count().await);
 
-    query_example(&manager).await?;
+    let queries = [
+        "What is the architecture of Nucleus?",
+        "How does Nucleus handle vector storage?",
+        "Describe the RAG pipeline steps.",
+        "How do plugins work in Nucleus?",
+        "Where is the Nucleus configuration stored and what options are available?",
+    ];
 
-    print_summary(&config, manager.knowledge_base_count().await);
+    for query in queries {
+        let rag_context = manager.preview_rag_context(query).await?;
+        let rag_used = rag_context
+            .lines()
+            .any(|line| line.trim_start().starts_with("[1]"));
+
+        println!("\nQ: {}", query);
+        println!("RAG_CONTEXT_USED={}", rag_used);
+
+        let response = manager.query(None, query).await?;
+        println!("A: {}", response.trim());
+    }
 
     Ok(())
-}
-
-fn print_rag_config(config: &Config) {
-    println!("RAG Configuration:");
-    match &config.storage.storage_mode {
-        nucleus_core::config::StorageMode::Embedded { path } => {
-            println!("  Storage: Embedded at {}", path);
-        }
-        nucleus_core::config::StorageMode::Grpc { url } => {
-            println!("  Storage: Remote gRPC @ {}", url);
-        }
-    }
-    println!("  Collection: {}", config.storage.vector_db.collection_name);
-    println!("  Embedding: {}", config.rag.as_ref().unwrap().embedding_model.name);
-    println!();
-}
-
-async fn index_example_directory(manager: &ChatManager) {
-    println!("=== Indexing Example ===");
-    println!("Indexing nucleus-core/src directory...\n");
-
-    let path = Path::new("./nucleus-core/src");
-    match manager.index_directory(path).await {
-        Ok(count) => {
-            let total = manager.knowledge_base_count().await;
-            println!("\n✓ Indexed {} files ({} total documents)\n", count, total);
-        }
-        Err(e) => {
-            eprintln!("⚠ Could not index directory: {}", e);
-            eprintln!("  Make sure Ollama is running and the embedding model is installed.\n");
-        }
-    }
-}
-
-async fn query_example(manager: &ChatManager) -> anyhow::Result<()> {
-    println!("=== Query Example ===");
-    println!("Query: 'Where is the index_directory function implemented?'\n");
-
-    let response = manager.query(
-        None,
-        "In which file and module is the index_directory function implemented? What does it do?"
-    ).await?;
-
-    println!("Response:\n{}\n", response);
-    Ok(())
-}
-
-fn print_summary(config: &Config, doc_count: usize) {
-    println!("=== Summary ===");
-    match &config.storage.storage_mode {
-        nucleus_core::config::StorageMode::Embedded { path } => {
-            println!(
-                "Collection '{}' at {}",
-                config.storage.vector_db.collection_name, path
-            );
-        }
-        nucleus_core::config::StorageMode::Grpc { url } => {
-            println!(
-                "Collection '{}' @ {}",
-                config.storage.vector_db.collection_name, url
-            );
-        }
-    }
-    println!("{} documents indexed", doc_count);
-    println!("Data persists across restarts");
 }

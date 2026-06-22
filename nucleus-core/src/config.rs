@@ -326,6 +326,15 @@ impl Config {
         self
     }
 
+    /// Ensure RAG is configured, using defaults when no RAG config is present.
+    ///
+    /// This preserves an existing custom RAG configuration and only fills in a
+    /// default [`RagConfig`] when `self.rag` is `None`.
+    pub fn with_default_rag(mut self) -> Self {
+        self.rag.get_or_insert_with(RagConfig::default);
+        self
+    }
+
     /// Configure storage settings.
     pub fn with_storage_config(mut self, storage_config: StorageConfig) -> Self {
         self.storage = storage_config;
@@ -373,5 +382,26 @@ mod tests {
     fn test_rag_config_defaults() {
         let config = RagConfig::default();
         assert_eq!(config.embedding_model.name, EmbeddingModel::default().name);
+    }
+
+    #[test]
+    fn test_with_default_rag_sets_rag_when_missing() {
+        let config = Config::default().with_default_rag();
+        assert!(config.rag.is_some());
+    }
+
+    #[test]
+    fn test_with_default_rag_preserves_existing_rag() {
+        let mut custom_rag = RagConfig::default();
+        custom_rag.indexer.chunk_overlap = 123;
+
+        let config = Config::default()
+            .with_rag_config(custom_rag.clone())
+            .with_default_rag();
+
+        assert_eq!(
+            config.rag.as_ref().unwrap().indexer.chunk_overlap,
+            custom_rag.indexer.chunk_overlap
+        );
     }
 }

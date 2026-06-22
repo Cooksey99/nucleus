@@ -524,4 +524,8 @@ impl RagEngine {
 
         Ok(removed)
     }
+
+    pub async fn clear_knowledge_base(&self) {
+        let _ = self.store.clear();
+    }
 }
