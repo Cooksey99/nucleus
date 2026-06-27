@@ -1,0 +1,13 @@
+[package]
+name = "nucleus-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Lightweight HTTPS endpoint and daemon controls for Nucleus models"
+[[bin]]
+name = "nucleus"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
