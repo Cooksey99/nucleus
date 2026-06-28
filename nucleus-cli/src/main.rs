@@ -1,4 +1,7 @@
 use clap::{Args, Parser, Subcommand};
+use nucleus_core::{ChatManager, Config};
+use nucleus_plugin::{Permission, PluginRegistry};
+use std::error::Error;
 use std::io;
 use std::net::TcpListener;
 
@@ -30,15 +33,19 @@ struct ServeArgs {
     /// Address to bind as host:port
     #[arg(long, default_value = "0.0.0.0:8443")]
     listen: String,
+    /// Model identifier
+    #[arg(long, short = 'm', required = true)]
+    models: Vec<String>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Serve(args) => {
-            if let Err(err) = run_serve(args) {
-                eprint!("serve failed: {err}");
+            if let Err(err) = run_serve(args).await {
+                eprintln!("serve failed: {err}");
                 std::process::exit(1);
             }
         }
@@ -54,15 +61,26 @@ fn main() {
     }
 }
 
-fn run_serve(args: ServeArgs) -> io::Result<()> {
-    let listener = TcpListener::bind(&args.listen)?;
+async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn Error>> {
+    let mut managers = Vec::new();
+
+    for model in args.models {
+        println!("model: {}", model);
+        let config = Config::new().with_model(model);
+        let registry = PluginRegistry::new(Permission::READ_ONLY);
+        let manager = ChatManager::new(config, registry).await?;
+        managers.push(manager);
+    }
+
+    let listener = TcpListener::bind(&args.listen).map_err(io::Error::other)?;
     println!("Nucleus listening on {}", listener.local_addr()?);
+    println!("Initialized {} model manager(s)", managers.len());
 
     for incoming in listener.incoming() {
         match incoming {
             Ok(_stream) => {}
             Err(err) => {
-                eprint!("Error: {err}")
+                eprintln!("Error: {err}")
             }
         }
     }
