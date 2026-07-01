@@ -4,6 +4,7 @@ use nucleus_plugin::{Permission, PluginRegistry};
 use std::error::Error;
 use std::io;
 use std::net::TcpListener;
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -26,6 +27,8 @@ enum Commands {
     Stop,
     /// Show endpoint status (implementation pending)
     Status,
+    /// List models downloaded in Nucleus
+    List,
 }
 
 #[derive(Debug, Args)]
@@ -58,6 +61,12 @@ async fn main() {
         Commands::Status => {
             println!("status: not implemented yet");
         }
+        Commands::List => {
+            if let Err(err) => run_list() {
+                eprintln!("list failed: {err}");
+                std::process::exit(1);
+            }
+        }
     }
 }
 
@@ -85,5 +94,11 @@ async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn Error>> {
         }
     }
 
+    Ok(())
+}
+
+fn run_list() -> Result<()> {
+    let root = PathBuf::from("models");
+    
     Ok(())
 }
