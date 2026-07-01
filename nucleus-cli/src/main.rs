@@ -2,6 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use nucleus_core::{ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 use std::error::Error;
+use std::fs::read_dir;
 use std::io;
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -62,7 +63,7 @@ async fn main() {
             println!("status: not implemented yet");
         }
         Commands::List => {
-            if let Err(err) => run_list() {
+            if let Err(err) = run_list() {
                 eprintln!("list failed: {err}");
                 std::process::exit(1);
             }
@@ -97,8 +98,17 @@ async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn run_list() -> Result<()> {
+fn run_list() -> Result<(), Box<dyn Error>> {
     let root = PathBuf::from("models");
     
+    read_dir(root)?.for_each(|item| {
+        if let Ok(val) = item {
+        
+            let name = val.file_name().display().to_string();
+            if !name.starts_with(".") {
+                println!("{}", name);
+            }
+        }
+    });
     Ok(())
 }
