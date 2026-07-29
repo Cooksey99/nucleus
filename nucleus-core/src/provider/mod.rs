@@ -4,6 +4,7 @@
 //! (Ollama, mistral.rs, etc.) to provide chat completions and embeddings.
 
 mod factory;
+pub mod grok;
 pub mod mistralrs;
 pub mod ollama;
 mod types;
@@ -19,6 +20,7 @@ pub use types::{
 
 // Re-export provider implementations
 pub use factory::create_provider;
+pub use grok::GrokProvider;
 pub use mistralrs::MistralRsProvider;
 pub use ollama::OllamaProvider;
 

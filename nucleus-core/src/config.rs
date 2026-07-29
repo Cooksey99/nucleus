@@ -58,7 +58,7 @@ impl Default for Permission {
 /// Configuration for the AI model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
-    /// Provider type: "ollama", "mistralrs", or "coreml"
+    /// Provider type: "mistralrs", or "coreml"
     #[serde(default = "default_provider")]
     pub provider: String,
     pub model: String,
@@ -71,6 +71,9 @@ pub struct LlmConfig {
     /// CoreML-specific: output feature name
     #[serde(default = "default_output_name")]
     pub coreml_output_name: String,
+    // API key for bearer token for hosted providers
+    #[serde(default)]
+    pub api_key: Option<String>,
 }
 
 fn default_provider() -> String {
@@ -244,6 +247,7 @@ impl Default for LlmConfig {
             context_length: 32768,
             coreml_input_name: default_input_name(),
             coreml_output_name: default_output_name(),
+            api_key: None,
         }
     }
 }
@@ -347,6 +351,12 @@ impl Config {
         personalization_config: PersonalizationConfig,
     ) -> Self {
         self.personalization = personalization_config;
+        self
+    }
+
+    /// Set API key for hosted LLM
+    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+        self.llm.api_key = Some(key.into());
         self
     }
 }
