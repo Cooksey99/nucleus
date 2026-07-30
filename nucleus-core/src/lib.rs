@@ -32,6 +32,6 @@ pub use server::Server;
 
 // Provider exports
 pub use provider::{
-    ChatRequest, ChatResponse, Message, Provider, ProviderError, Tool, ToolCall, ToolCallFunction,
-    ToolFunction,
+    grok_login, grok_logout, ChatRequest, ChatResponse, GrokProvider, Message, Provider,
+    ProviderError, Tool, ToolCall, ToolCallFunction, ToolFunction,
 };

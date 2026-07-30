@@ -1,5 +1,5 @@
 use clap::{Args, Parser, Subcommand};
-use nucleus_core::{ChatManager, Config};
+use nucleus_core::{grok_login, grok_logout, ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 use std::error::Error;
 use std::fs::read_dir;
@@ -30,6 +30,10 @@ enum Commands {
     Status,
     /// List models downloaded in Nucleus
     List,
+    /// Sign in to a Grok account (device-code OAuth)
+    Login,
+    /// Clear stored Grok credentials
+    Logout,
 }
 
 #[derive(Debug, Args)]
@@ -62,13 +66,42 @@ async fn main() {
         Commands::Status => {
             println!("status: not implemented yet");
         }
-        Commands::List => {
+Commands::List => {
             if let Err(err) = run_list() {
                 eprintln!("list failed: {err}");
                 std::process::exit(1);
             }
         }
+        Commands::Login => {
+            if let Err(err) = run_login().await {
+                eprintln!("login failed: {err}");
+                std::process::exit(1);
+            }
+        }
+        Commands::Logout => {
+            if let Err(err) = run_logout() {
+                eprintln!("logout failed: {err}");
+                std::process::exit(1);
+            }
+        }
     }
+}
+
+async fn run_login() -> Result<(), Box<dyn Error>> {
+    grok_login(|url, code| {
+        println!("Open: {url}");
+        println!("Code: {code}");
+        println!("Waiting for approval...");
+    })
+    .await?;
+    println!("Logged in (~/.nucleus/grok-auth.json)");
+    Ok(())
+}
+
+fn run_logout() -> Result<(), Box<dyn Error>> {
+    grok_logout()?;
+    println!("Logged out.");
+    Ok(())
 }
 
 async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn Error>> {

@@ -20,7 +20,7 @@ pub use types::{
 
 // Re-export provider implementations
 pub use factory::create_provider;
-pub use grok::GrokProvider;
+pub use grok::{login as grok_login, logout as grok_logout, GrokProvider};
 pub use mistralrs::MistralRsProvider;
 pub use ollama::OllamaProvider;
 

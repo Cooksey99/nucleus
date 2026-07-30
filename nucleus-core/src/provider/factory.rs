@@ -15,6 +15,7 @@ use tracing::info;
 /// - `"ollama"` - Ollama API provider
 /// - `"mistralrs"` - mistral.rs in-process provider
 /// - `"coreml"` - CoreML inference (macOS only, requires `coreml` feature)
+/// - `"grok"` - xAI Grok (account OAuth or API key)
 pub async fn create_provider(
     config: &Config,
     registry: Arc<PluginRegistry>,
@@ -45,11 +46,11 @@ pub async fn create_provider(
         )),
         "grok" => {
             info!("Using Grok provider");
-            let provider =GrokProvider::new(config)?;
+            let provider = GrokProvider::new(config)?;
             Ok(Arc::new(provider))
         }
         _ => Err(ProviderError::Other(format!(
-            "Unknown provider type: {}. Supported: ollama, mistralrs, coreml",
+            "Unknown provider type: {}. Supported: ollama, mistralrs, coreml, grok",
             provider_type
         ))),
     }
