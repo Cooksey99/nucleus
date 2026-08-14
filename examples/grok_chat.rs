@@ -1,0 +1,56 @@
+use std::io::{self, Write};
+
+use nucleus::{ChatManager, Config};
+use nucleus_plugin::{Permission, PluginRegistry};
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("nucleus_core=info".parse().unwrap()),
+        )
+        .init();
+
+    let config = Config::new()
+        .with_provider("grok")
+        .with_model("grok-4.5");
+    
+    
+    let registry = PluginRegistry::new(Permission::NONE);
+    let manager = ChatManager::new(config, registry)
+        .await
+        .expect("Failed to create chat manager");
+
+    loop {
+        println!("Enter message:");
+        std::io::stdout().flush().unwrap();
+
+        let mut message = String::new();
+        std::io::stdin().read_line(&mut message).expect("Unable to read line");
+
+    // Stream response with live printing
+    let start = std::time::Instant::now();
+    let mut token_count = 0;
+    let response = manager
+        .query_stream(None, message.as_str(), |chunk| {
+            print!("{}", chunk);
+            io::stdout().flush().unwrap();
+            // Rough token estimation: ~4 chars per token
+            token_count += chunk.len() / 4;
+        })
+        .await
+        .expect("Failed to get response");
+    let elapsed = start.elapsed();
+
+    println!("\n\n--- Stream complete ---");
+    println!("Total length: {} characters", response.len());
+    println!("Time elapsed: {:.2}s", elapsed.as_secs_f64());
+    println!("Est. tokens: {}", token_count);
+    println!(
+        "Est. throughput: {:.1} tok/s",
+        token_count as f64 / elapsed.as_secs_f64()
+    );
+    }
+
+}

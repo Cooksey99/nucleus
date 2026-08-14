@@ -1,4 +1,4 @@
-//! Grok / xAI provider — account OAuth (device-code) first; chat later.
+//! Grok / xAI provider — OAuth/API key auth + Responses API chat.
 
 use std::fs;
 use std::io;
@@ -6,18 +6,23 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use futures::StreamExt;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 use crate::models::EmbeddingModel;
 use crate::Config;
 
-use super::types::{ChatRequest, ChatResponse, Provider, ProviderError, Result};
+use super::types::{ChatRequest, ChatResponse, Message, Provider, ProviderError, Result};
 
 const CLIENT_ID: &str = "b1a00492-073a-47ea-816f-4c329264a828";
 const DEVICE_URL: &str = "https://auth.x.ai/oauth2/device/code";
 const TOKEN_URL: &str = "https://auth.x.ai/oauth2/token";
 const SCOPE: &str = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write";
 const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
+const REASONING_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
+const DEFAULT_API_BASE: &str = "https://api.x.ai/v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Tokens {
@@ -210,6 +215,7 @@ pub async fn access_token() -> Result<String> {
 
 #[derive(Debug, Clone)]
 pub struct GrokProvider {
+    client: Client,
     base_url: String,
     api_key: Option<String>,
     model: String,
@@ -230,19 +236,22 @@ impl GrokProvider {
             ));
         }
 
+// Same surface Warp uses for SuperGrok OAuth and API-key traffic.
         let configured = config.llm.base_url.trim();
         let local = configured.is_empty()
             || configured.contains("localhost")
-            || configured.contains("127.0.0.1");
+            || configured.contains("127.0.0.1")
+            || configured.contains("cli-chat-proxy.grok.com");
         let base_url = if !local {
             configured.trim_end_matches('/').into()
-        } else if api_key.is_some() {
-            "https://api.x.ai/v1".into()
         } else {
-            "https://cli-chat-proxy.grok.com/v1".into()
+            DEFAULT_API_BASE.into()
         };
 
+        let client = Client::new();
+
         Ok(Self {
+            client,
             base_url,
             api_key,
             model: config.llm.model.clone(),
@@ -270,10 +279,98 @@ impl GrokProvider {
 impl Provider for GrokProvider {
     async fn chat<'a>(
         &'a self,
-        _request: ChatRequest,
-        _callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
+        request: ChatRequest,
+        mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()> {
-        Err(ProviderError::Other("Grok chat not implemented yet".into()))
+        let token = self.bearer_token().await?;
+        let model = if request.model.is_empty() {
+            self.model.clone()
+        } else {
+            request.model.clone()
+        };
+
+        let mut body = json!({
+            "model": model,
+            "input": to_grok_input(&request.messages),
+            "temperature": request.temperature,
+            "stream": true,
+            "store": false,
+        });
+
+        if let Some(effort) = request.reasoning_effort.as_deref() {
+            let effort = effort.to_ascii_lowercase();
+            if !REASONING_EFFORTS.contains(&effort.as_str()) {
+                return Err(ProviderError::InvalidParam(format!(
+                    "Grok reasoning_effort must be one of {REASONING_EFFORTS:?}, got {effort}"
+                )));
+            }
+            body["reasoning"] = json!({ "effort": effort });
+        }
+
+        if let Some(tools) = request.tools.as_ref() {
+            if !tools.is_empty() {
+                body["tools"] = json!(to_grok_tools(tools));
+            }
+        }
+
+let url = format!("{}/responses", self.base_url.trim_end_matches('/'));
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&token)
+            .header("Accept", "text/event-stream")
+            .json(&body)
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let err = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Api(format!("Grok chat failed ({status}): {err}")));
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            buffer.push_str(&String::from_utf8_lossy(&chunk?));
+
+            while let Some(idx) = buffer.find("\n\n") {
+                let frame = buffer[..idx].to_string();
+                buffer.drain(..=idx + 1);
+
+                for line in frame.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with(':') {
+                        continue;
+                    }
+                    let Some(data) = line.strip_prefix("data:") else {
+                        continue;
+                    };
+                    let data = data.trim();
+                    if data.is_empty() || data == "[DONE]" {
+                        continue;
+                    }
+
+                    let Ok(event) = serde_json::from_str::<Value>(data) else {
+                        continue;
+                    };
+
+                    if let Some(chunk) = parse_stream_event(&model, &event) {
+                        callback(chunk);
+                    }
+                }
+            }
+        }
+
+        // Ensure callers always see a terminal chunk.
+        callback(ChatResponse {
+            model,
+            content: String::new(),
+            done: true,
+            message: Message::assistant(None, ""),
+        });
+
+        Ok(())
     }
 
     async fn embed(&self, _text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {
@@ -281,4 +378,116 @@ impl Provider for GrokProvider {
             "Grok embeddings not supported; use a local embedder for RAG".into(),
         ))
     }
+}
+
+fn to_grok_input(messages: &[Message]) -> Vec<Value> {
+    messages
+        .iter()
+        .map(|m| {
+            json!({
+                "role": m.role,
+                "content": m.content,
+            })
+        })
+        .collect()
+}
+
+fn to_grok_tools(tools: &[super::types::Tool]) -> Vec<Value> {
+    tools
+        .iter()
+        .map(|t| {
+            json!({
+                "type": "function",
+                "name": t.function.name,
+                "description": t.function.description,
+                "parameters": t.function.parameters,
+            })
+        })
+        .collect()
+}
+
+/// Map Responses API SSE events into Nucleus chat chunks.
+fn parse_stream_event(model: &str, event: &Value) -> Option<ChatResponse> {
+    let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+    match event_type {
+        // Preferred Responses streaming events
+        "response.output_text.delta" => {
+            let delta = event.get("delta").and_then(|v| v.as_str()).unwrap_or("");
+            if delta.is_empty() {
+                return None;
+            }
+            Some(ChatResponse {
+                model: model.to_string(),
+                content: delta.to_string(),
+                done: false,
+                message: Message::assistant(None, delta),
+            })
+        }
+        "response.completed" | "response.done" => Some(ChatResponse {
+            model: model.to_string(),
+            content: String::new(),
+            done: true,
+            message: Message::assistant(None, ""),
+        }),
+        // Fallback: some gateways still emit chat.completion.chunk shapes
+        _ => {
+            if let Some(content) = event
+                .pointer("/choices/0/delta/content")
+                .and_then(|v| v.as_str())
+            {
+                if content.is_empty() {
+                    return None;
+                }
+                return Some(ChatResponse {
+                    model: model.to_string(),
+                    content: content.to_string(),
+                    done: false,
+                    message: Message::assistant(None, content),
+                });
+            }
+
+            // Non-stream full Responses payload (if stream was ignored)
+            if let Some(text) = extract_output_text(event) {
+                return Some(ChatResponse {
+                    model: model.to_string(),
+                    content: text.clone(),
+                    done: true,
+                    message: Message::assistant(None, text),
+                });
+            }
+
+            None
+        }
+    }
+}
+
+fn extract_output_text(value: &Value) -> Option<String> {
+    // Responses API: output[].content[].text where type == output_text
+    if let Some(output) = value.get("output").and_then(|v| v.as_array()) {
+        let mut parts = Vec::new();
+        for item in output {
+            if item.get("type").and_then(|v| v.as_str()) != Some("message") {
+                continue;
+            }
+            if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
+                for part in content {
+                    if part.get("type").and_then(|v| v.as_str()) == Some("output_text") {
+                        if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                            parts.push(text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        if !parts.is_empty() {
+            return Some(parts.join(""));
+        }
+    }
+
+    // Chat Completions fallback
+    value
+        .pointer("/choices/0/message/content")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
 }

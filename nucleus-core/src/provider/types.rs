@@ -39,6 +39,9 @@ pub enum ProviderError {
     #[error("API error: {0}")]
     Api(String),
 
+    #[error("Invalid parameter: {0}")]
+    InvalidParam(String),
+
     #[error("Provider error: {0}")]
     Other(String),
 }
@@ -82,6 +85,7 @@ pub struct ChatRequest {
     pub temperature: f64,
     pub tools: Option<Vec<Tool>>,
     pub structured_output: Option<StructuredOutput>,
+    pub reasoning_effort: Option<String>,
 }
 
 impl ChatRequest {
@@ -92,6 +96,7 @@ impl ChatRequest {
             temperature: 0.7,
             tools: None,
             structured_output: None,
+            reasoning_effort: None,
         }
     }
 
@@ -107,6 +112,11 @@ impl ChatRequest {
 
     pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = Some(tools);
+        self
+    }
+
+    pub fn with_reasoning_effort(mut self, effort: impl Into<String>) -> Self {
+        self.reasoning_effort = Some(effort.into());
         self
     }
 }
