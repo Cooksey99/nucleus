@@ -331,6 +331,29 @@ impl ChatManager {
         self.history.lock().await.clear();
     }
 
+    /// Run a slash command, if `input` starts with `/`.
+    ///
+    /// Returns [`CommandEffect::NotACommand`] for ordinary text, including the word
+    /// `reset`. Callers that want `/reset` should use this before [`query`](Self::query).
+    pub async fn handle_command(&self, input: &str) -> crate::chat::CommandEffect {
+        use crate::chat::commands::{self, Action};
+        use crate::chat::CommandEffect;
+
+        match commands::action(input) {
+            Action::NotACommand => CommandEffect::NotACommand,
+            Action::ClearHistory => {
+                self.clear_history().await;
+                CommandEffect::Handled {
+                    message: "History cleared.".to_string(),
+                }
+            }
+            Action::Reply(message) => CommandEffect::Handled { message },
+            Action::Exit => CommandEffect::Exit {
+                message: "Exiting.".to_string(),
+            },
+        }
+    }
+
     /// Sends a query and returns the final response.
     ///
     /// The manager keeps the conversation. This call appends `user_message`, runs any

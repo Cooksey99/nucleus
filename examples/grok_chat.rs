@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use nucleus::{ChatManager, Config};
+use nucleus::{ChatManager, CommandEffect, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 
 #[tokio::main]
@@ -23,7 +23,7 @@ async fn main() {
         .expect("Failed to create chat manager");
 
     loop {
-        println!("Enter message (reset to clear history):");
+        println!("Enter message (/help for commands):");
         std::io::stdout().flush().unwrap();
 
         let mut message = String::new();
@@ -32,10 +32,16 @@ async fn main() {
         if message.is_empty() {
             continue;
         }
-        if message.eq_ignore_ascii_case("reset") {
-            manager.clear_history().await;
-            println!("History cleared.\n");
-            continue;
+        match manager.handle_command(message).await {
+            CommandEffect::NotACommand => {}
+            CommandEffect::Handled { message } => {
+                println!("{message}\n");
+                continue;
+            }
+            CommandEffect::Exit { message } => {
+                println!("{message}");
+                break;
+            }
         }
 
     // Stream response with live printing. Follow-ups continue the same conversation.

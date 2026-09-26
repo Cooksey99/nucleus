@@ -1,6 +1,6 @@
 // The initial indexing in this example can take a few minutes
 
-use nucleus::{ChatManagerBuilder, Config};
+use nucleus::{ChatManagerBuilder, CommandEffect, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 
 #[tokio::main]
@@ -60,7 +60,7 @@ async fn main() {
     );
 
     loop {
-        println!("Enter message (reset to clear history, exit to quit): ");
+        println!("Enter message (/help for commands): ");
 
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
@@ -68,13 +68,16 @@ async fn main() {
         if input.is_empty() {
             continue;
         }
-        if input == "exit" || input == "quit" {
-            break;
-        }
-        if input.eq_ignore_ascii_case("reset") {
-            manager.clear_history().await;
-            println!("History cleared.\n");
-            continue;
+        match manager.handle_command(input).await {
+            CommandEffect::NotACommand => {}
+            CommandEffect::Handled { message } => {
+                println!("{message}\n");
+                continue;
+            }
+            CommandEffect::Exit { message } => {
+                println!("{message}");
+                break;
+            }
         }
 
         manager

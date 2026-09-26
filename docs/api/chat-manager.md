@@ -168,6 +168,8 @@ manager.clear_history().await; // next query starts clean and re-seeds the syste
 
 `history`, `set_history`, and `clear_history` wait if a turn is in progress. Overlapping `query` calls on the same manager cannot interleave messages.
 
+Interactive loops can call `handle_command` before `query`. A line that starts with `/` is a command (`/help`, `/reset`, `/exit`, `/quit`). Any other text, including the word `reset`, is sent to the model.
+
 RAG context is retrieved for the new user text only. Older turns are not rewritten.
 
 ## Design Decisions to Consider
