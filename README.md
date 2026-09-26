@@ -33,7 +33,8 @@ async fn main() -> anyhow::Result<()> {
     
     let manager = ChatManager::new(config, registry).await;
     
-    // Ask the AI a question - it will use plugins to answer
+    // Ask the AI a question - it will use plugins to answer.
+    // A later query on the same manager continues this conversation.
     let response = manager.query(
         "What's on line 7 of Cargo.toml?"
     ).await?;

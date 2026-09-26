@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
     // 3. Create chat manager
     let manager = ChatManager::new(config, registry).await?;
     
-    // 4. Query the AI
+    // 4. Query the AI. Follow-up queries continue the same conversation.
     let response = manager.query("Summarize main.rs").await?;
     println!("AI: {}", response);
     

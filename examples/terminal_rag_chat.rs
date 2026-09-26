@@ -1,6 +1,6 @@
 // The initial indexing in this example can take a few minutes
 
-use nucleus::{ChatManagerBuilder, Config};
+use nucleus::{ChatManagerBuilder, CommandEffect, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 
 #[tokio::main]
@@ -59,18 +59,29 @@ async fn main() {
         manager.knowledge_base_count().await - doc_count
     );
 
-    let mut input = String::new();
-
     loop {
-        println!("Enter message: ");
+        println!("Enter message (/help for commands): ");
 
+        let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
-        if input == "exit" || input == "quit" {
-            break;
+        let input = input.trim();
+        if input.is_empty() {
+            continue;
+        }
+        match manager.handle_command(input).await {
+            CommandEffect::NotACommand => {}
+            CommandEffect::Handled { message } => {
+                println!("{message}\n");
+                continue;
+            }
+            CommandEffect::Exit { message } => {
+                println!("{message}");
+                break;
+            }
         }
 
         manager
-            .query_stream(None, &input, |chunk| {
+            .query_stream(input, |chunk| {
                 print!("{}", chunk);
             })
             .await

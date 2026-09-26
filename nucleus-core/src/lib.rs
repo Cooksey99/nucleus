@@ -24,7 +24,7 @@ pub mod rag;
 pub mod server;
 
 // Public exports
-pub use chat::{ChatManager, ChatManagerBuilder};
+pub use chat::{ChatManager, ChatManagerBuilder, CommandEffect};
 pub use config::{Config, IndexerConfig};
 pub use detection::{check_ollama_silent, detect_ollama, DetectionError, OllamaInfo};
 pub use rag::RagEngine;
@@ -32,6 +32,6 @@ pub use server::Server;
 
 // Provider exports
 pub use provider::{
-    ChatRequest, ChatResponse, Message, Provider, ProviderError, Tool, ToolCall, ToolCallFunction,
-    ToolFunction,
+    grok_login, grok_logout, ChatRequest, ChatResponse, GrokProvider, Message, Provider,
+    ProviderError, Tool, ToolCall, ToolCallFunction, ToolFunction,
 };

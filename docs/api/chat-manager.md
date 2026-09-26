@@ -18,7 +18,7 @@ pub struct ChatManager {
 - Detect and execute tool calls requested by the LLM
 - Handle streaming responses
 - Integrate RAG for context enrichment
-- Maintain conversation history
+- Keep one conversation on the manager and continue it across queries
 
 ## Construction
 
@@ -67,28 +67,38 @@ let manager = ChatManager::new(config, registry).await?
 
 ### `query(&self, user_message: &str) -> Result<String>`
 
-Send a query to the AI and get a response.
+Send a query and continue the stored conversation.
 
 ```rust
 let response = manager.query("What files are in the src/ directory?").await?;
-println!("AI: {}", response);
+let follow_up = manager.query("Open the first one").await?;
+println!("AI: {}", follow_up);
 ```
 
 **Behavior**:
-1. Sends user message to LLM with available tool definitions
-2. If LLM requests tools, executes them and continues conversation
-3. Returns final text response when LLM is satisfied
-4. Automatically handles multi-turn tool execution loops
+1. Appends the user message to stored history (seeding the system prompt on an empty history)
+2. Sends that history to the LLM with available tool definitions
+3. If the LLM requests tools, records those turns, executes them, and continues
+4. Records the final assistant reply and returns its text
 
-### `stream_query(&self, user_message: &str) -> impl Stream<Item = Result<String>>`
+A later `query` sees the earlier turns. Call `clear_history()` to start over.
 
-**(To be implemented)** Stream responses token-by-token for real-time UX.
+### `query_stream(&self, user_message: &str, on_chunk: F) -> Result<String>`
+
+Streaming version of `query`. The callback receives each text chunk. The completed turn is still stored.
 
 ```rust
-let mut stream = manager.stream_query("Explain this codebase").await?;
-while let Some(chunk) = stream.next().await {
-    print!("{}", chunk?);
-}
+let response = manager.query_stream("Explain this codebase", |chunk| {
+    print!("{}", chunk);
+}).await?;
+```
+
+### `query_with(&self, messages: &[Message], user_message: &str) -> Result<String>`
+
+Run one turn against a supplied history without reading or writing the stored conversation. `query_with_stream` is the streaming form. Use this for a trial, a branch, or a caller that owns the vec.
+
+```rust
+let trial = manager.query_with(&[], "What is 2 + 2?").await?;
 ```
 
 ## RAG / Knowledge Base Methods
@@ -143,33 +153,32 @@ LLM: "The file contains..."
 User receives final response
 ```
 
-## State Management
+## History
 
-**Current State**: Conversation history is maintained in memory during the `ChatManager` lifetime.
+One `ChatManager` is one conversation. History stays in memory for the manager's lifetime. It is not written to disk.
 
-**Planned**: Persistent conversation storage with loading/saving capabilities.
+```rust
+let first = manager.query("Remember the number 7").await?;
+let second = manager.query("What number did I just give you?").await?;
+
+let snapshot = manager.history().await;
+manager.set_history(snapshot); // replace; caller owns system prompt and prior turns
+manager.clear_history().await; // next query starts clean and re-seeds the system prompt
+```
+
+`history`, `set_history`, and `clear_history` wait if a turn is in progress. Overlapping `query` calls on the same manager cannot interleave messages.
+
+Interactive loops can call `handle_command` before `query`. A line that starts with `/` is a command (`/help`, `/reset`, `/exit`, `/quit`). Any other text, including the word `reset`, is sent to the model.
+
+RAG context is retrieved for the new user text only. Older turns are not rewritten.
 
 ## Design Decisions to Consider
 
 ### 1. **Streaming API**
 
-Should `query()` return a stream by default, or keep separate `query()` and `stream_query()` methods?
+`query` returns the final string. `query_stream` invokes a callback for each chunk and still stores the completed turn.
 
-**Options**:
-- A: Single `query()` returns `Stream<String>` (always streaming)
-- B: Separate `query()` (blocking) and `stream_query()` (streaming)
-- C: Generic `query<R: ResponseType>()` with trait-based selection
-
-### 2. **History Management**
-
-How should users access/modify conversation history?
-
-**Options**:
-- A: `get_history() -> &[Message]` (read-only)
-- B: `clear_history()`, `append_history()`, `set_history()` (mutable)
-- C: Separate `ConversationSession` type that wraps history
-
-### 3. **Tool Call Visibility**
+### 2. **Tool Call Visibility**
 
 Should tool calls be observable by the API consumer?
 
@@ -178,7 +187,7 @@ Should tool calls be observable by the API consumer?
 - B: Callback: `on_tool_call(|name, input, output| { ... })`
 - C: Return `Response { text: String, tools_used: Vec<ToolCall> }`
 
-### 4. **Error Handling**
+### 3. **Error Handling**
 
 What happens when a tool execution fails?
 
@@ -200,7 +209,8 @@ let registry = PluginRegistry::new(Permission::READ_ONLY);
 let manager = ChatManager::new(config, registry).await?;
 
 let response = manager.query("Hello!").await?;
-println!("AI: {}", response);
+let follow_up = manager.query("What did I just say?").await?;
+println!("AI: {}", follow_up);
 ```
 
 ### With File Reading Plugin
@@ -214,6 +224,7 @@ registry.register(Arc::new(ReadFilePlugin::new()));
 
 let manager = ChatManager::new(config, registry).await?;
 let response = manager.query("What's in Cargo.toml?").await?;
+println!("{}", response);
 ```
 
 ### Custom Provider

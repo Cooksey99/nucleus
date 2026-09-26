@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
         println!("\nQ: {}", query);
         println!("RAG_CONTEXT_USED={}", rag_used);
 
-        let response = manager.query(None, query).await?;
+        let response = manager.query(query).await?;
         println!("A: {}", response.trim());
     }
 

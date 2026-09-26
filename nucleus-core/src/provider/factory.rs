@@ -4,7 +4,7 @@ use super::types::*;
 #[cfg(any(target_os = "macos", feature = "coreml"))]
 use super::CoreMLProvider;
 use super::{MistralRsProvider, OllamaProvider};
-use crate::Config;
+use crate::{Config, provider::GrokProvider};
 use nucleus_plugin::PluginRegistry;
 use std::sync::Arc;
 use tracing::info;
@@ -15,6 +15,7 @@ use tracing::info;
 /// - `"ollama"` - Ollama API provider
 /// - `"mistralrs"` - mistral.rs in-process provider
 /// - `"coreml"` - CoreML inference (macOS only, requires `coreml` feature)
+/// - `"grok"` - xAI Grok (account OAuth or API key)
 pub async fn create_provider(
     config: &Config,
     registry: Arc<PluginRegistry>,
@@ -43,8 +44,13 @@ pub async fn create_provider(
         "coreml" => Err(ProviderError::Other(
             "CoreML provider is only available on macOS".to_string(),
         )),
+        "grok" => {
+            info!("Using Grok provider");
+            let provider = GrokProvider::new(config)?;
+            Ok(Arc::new(provider))
+        }
         _ => Err(ProviderError::Other(format!(
-            "Unknown provider type: {}. Supported: ollama, mistralrs, coreml",
+            "Unknown provider type: {}. Supported: ollama, mistralrs, coreml, grok",
             provider_type
         ))),
     }

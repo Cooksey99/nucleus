@@ -75,6 +75,11 @@ WARP.md
 
 config.yaml
 
+# Auth credentials (tokens / secrets) — never commit
+.nucleus/
+**/grok-auth.json
+*.auth.json
+
 # mdBook output
 docs/book/
 
