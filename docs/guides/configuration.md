@@ -20,8 +20,8 @@ registry.add(ReadFilePlugin::new());
 // This sets the config and LLM to be ready for usage
 let manager = ChatManager::new(config, registry).await?;
 
-// Ask a qustion
-let response = manager.query("Summarize the README.md for me")
+// Ask a question. The next query on this manager continues the conversation.
+let response = manager.query("Summarize the README.md for me").await?;
 println!("{}", response);
 ```
 

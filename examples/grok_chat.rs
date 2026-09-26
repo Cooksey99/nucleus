@@ -23,17 +23,26 @@ async fn main() {
         .expect("Failed to create chat manager");
 
     loop {
-        println!("Enter message:");
+        println!("Enter message (reset to clear history):");
         std::io::stdout().flush().unwrap();
 
         let mut message = String::new();
         std::io::stdin().read_line(&mut message).expect("Unable to read line");
+        let message = message.trim();
+        if message.is_empty() {
+            continue;
+        }
+        if message.eq_ignore_ascii_case("reset") {
+            manager.clear_history().await;
+            println!("History cleared.\n");
+            continue;
+        }
 
-    // Stream response with live printing
+    // Stream response with live printing. Follow-ups continue the same conversation.
     let start = std::time::Instant::now();
     let mut token_count = 0;
     let response = manager
-        .query_stream(None, message.as_str(), |chunk| {
+        .query_stream(message, |chunk| {
             print!("{}", chunk);
             io::stdout().flush().unwrap();
             // Rough token estimation: ~4 chars per token

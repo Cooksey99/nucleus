@@ -59,18 +59,26 @@ async fn main() {
         manager.knowledge_base_count().await - doc_count
     );
 
-    let mut input = String::new();
-
     loop {
-        println!("Enter message: ");
+        println!("Enter message (reset to clear history, exit to quit): ");
 
+        let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim();
+        if input.is_empty() {
+            continue;
+        }
         if input == "exit" || input == "quit" {
             break;
         }
+        if input.eq_ignore_ascii_case("reset") {
+            manager.clear_history().await;
+            println!("History cleared.\n");
+            continue;
+        }
 
         manager
-            .query_stream(None, &input, |chunk| {
+            .query_stream(input, |chunk| {
                 print!("{}", chunk);
             })
             .await
