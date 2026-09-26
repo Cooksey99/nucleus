@@ -1,7 +1,7 @@
 //! Grok / xAI provider — OAuth/API key auth + Responses API chat.
 
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -10,6 +10,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tracing::info;
 
 use crate::models::EmbeddingModel;
 use crate::Config;
@@ -22,7 +23,61 @@ const TOKEN_URL: &str = "https://auth.x.ai/oauth2/token";
 const SCOPE: &str = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write";
 const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const REASONING_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
-const DEFAULT_API_BASE: &str = "https://api.x.ai/v1";
+const API_BASE: &str = "https://api.x.ai/v1";
+const PROXY_BASE: &str = "https://cli-chat-proxy.grok.com/v1";
+/// How long to wait for the next SSE chunk before treating the stream as stalled.
+const STREAM_IDLE: Duration = Duration::from_secs(600);
+
+/// Pick the host from the credential, not the model id.
+///
+/// Session tokens belong on the CLI chat proxy. API keys belong on the public API.
+/// Localhost and either of those two hosts are not an explicit override.
+fn resolve_base_url(configured: &str, using_api_key: bool) -> String {
+    let configured = configured.trim().trim_end_matches('/');
+    let unset = configured.is_empty()
+        || configured.contains("localhost")
+        || configured.contains("127.0.0.1");
+    let known = configured == API_BASE || configured == PROXY_BASE;
+    if !unset && !known {
+        return configured.to_string();
+    }
+    if using_api_key {
+        API_BASE.to_string()
+    } else {
+        PROXY_BASE.to_string()
+    }
+}
+
+fn grok_cli_version() -> String {
+    let fallback = "1.0.41".to_string();
+    let Ok(home) = std::env::var("HOME") else {
+        return fallback;
+    };
+    let Ok(raw) = fs::read_to_string(PathBuf::from(home).join(".grok/version.json")) else {
+        return fallback;
+    };
+    serde_json::from_str::<Value>(&raw)
+        .ok()
+        .and_then(|v| {
+            v.get("stable_version")
+                .or_else(|| v.get("version"))
+                .and_then(|s| s.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or(fallback)
+}
+
+fn new_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    format!(
+        "{:x}-{:x}-{:x}",
+        now(),
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Tokens {
@@ -219,6 +274,7 @@ pub struct GrokProvider {
     base_url: String,
     api_key: Option<String>,
     model: String,
+    session_id: String,
 }
 
 impl GrokProvider {
@@ -236,26 +292,83 @@ impl GrokProvider {
             ));
         }
 
-// Same surface Warp uses for SuperGrok OAuth and API-key traffic.
-        let configured = config.llm.base_url.trim();
-        let local = configured.is_empty()
-            || configured.contains("localhost")
-            || configured.contains("127.0.0.1")
-            || configured.contains("cli-chat-proxy.grok.com");
-        let base_url = if !local {
-            configured.trim_end_matches('/').into()
-        } else {
-            DEFAULT_API_BASE.into()
-        };
+        let base_url = resolve_base_url(&config.llm.base_url, api_key.is_some());
+        info!(
+            model = %config.llm.model,
+            base_url = %base_url,
+            auth = if api_key.is_some() { "api_key" } else { "oauth" },
+            "Grok provider ready"
+        );
 
-        let client = Client::new();
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| ProviderError::Other(e.to_string()))?;
 
         Ok(Self {
             client,
             base_url,
             api_key,
             model: config.llm.model.clone(),
+            session_id: new_id(),
         })
+    }
+
+    fn uses_cli_proxy(&self) -> bool {
+        self.api_key.is_none() && !self.base_url.contains("api.x.ai")
+    }
+
+    fn handle_frame(
+        &self,
+        model: &str,
+        frame: &str,
+        callback: &mut dyn FnMut(ChatResponse),
+        announced: &mut bool,
+    ) -> Result<bool> {
+        let mut saw = false;
+        for line in frame.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with(':') {
+                continue;
+            }
+            let Some(data) = line.strip_prefix("data:") else {
+                continue;
+            };
+            let data = data.trim();
+            if data.is_empty() || data == "[DONE]" {
+                saw = true;
+                continue;
+            }
+            let Ok(event) = serde_json::from_str::<Value>(data) else {
+                continue;
+            };
+            saw = true;
+            if let Some(err) = stream_error(&event) {
+                return Err(ProviderError::Api(err));
+            }
+            if let Some(note) = reasoning_delta(&event) {
+                if !*announced {
+                    info!("Grok is reasoning");
+                    *announced = true;
+                }
+                eprint!("{note}");
+                let _ = std::io::stderr().flush();
+                continue;
+            }
+            if let Some(chunk) = parse_stream_event(model, &event) {
+                if *announced {
+                    eprintln!();
+                    *announced = false;
+                }
+                callback(chunk);
+                continue;
+            }
+            if !*announced {
+                info!(event = event_type(&event), "Grok stream open");
+                *announced = true;
+            }
+        }
+        Ok(saw)
     }
 
     pub async fn bearer_token(&self) -> Result<String> {
@@ -295,6 +408,7 @@ impl Provider for GrokProvider {
             "temperature": request.temperature,
             "stream": true,
             "store": false,
+            "prompt_cache_key": self.session_id,
         });
 
         if let Some(effort) = request.reasoning_effort.as_deref() {
@@ -313,53 +427,69 @@ impl Provider for GrokProvider {
             }
         }
 
-let url = format!("{}/responses", self.base_url.trim_end_matches('/'));
-        let response = self
+        let url = format!("{}/responses", self.base_url.trim_end_matches('/'));
+        info!(%url, %model, "Grok request sent");
+        let mut req = self
             .client
             .post(&url)
             .bearer_auth(&token)
             .header("Accept", "text/event-stream")
-            .json(&body)
-            .send()
-            .await?;
+            .json(&body);
+        if self.uses_cli_proxy() {
+            // The proxy dispatches from x-grok-model-override, not the JSON model field.
+            req = req
+                .header("User-Agent", "xai-grok-cli")
+                .header("X-XAI-Token-Auth", "xai-grok-cli")
+                .header("x-grok-client-identifier", "grok-shell")
+                .header("x-grok-client-version", grok_cli_version())
+                .header("x-grok-client-mode", "interactive")
+                .header("x-grok-model-override", &model)
+                .header("x-grok-conv-id", &self.session_id)
+                .header("x-grok-session-id", &self.session_id)
+                .header("x-grok-req-id", new_id());
+        }
+        let response = req.send().await?;
         if !response.status().is_success() {
             let status = response.status();
             let err = response.text().await.unwrap_or_default();
             return Err(ProviderError::Api(format!("Grok chat failed ({status}): {err}")));
         }
 
+        info!(status = %response.status(), "Grok stream started");
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
+        let mut saw_event = false;
+        let mut announced = false;
 
-        while let Some(chunk) = stream.next().await {
-            buffer.push_str(&String::from_utf8_lossy(&chunk?));
-
-            while let Some(idx) = buffer.find("\n\n") {
-                let frame = buffer[..idx].to_string();
-                buffer.drain(..=idx + 1);
-
-                for line in frame.lines() {
-                    let line = line.trim();
-                    if line.is_empty() || line.starts_with(':') {
-                        continue;
-                    }
-                    let Some(data) = line.strip_prefix("data:") else {
-                        continue;
-                    };
-                    let data = data.trim();
-                    if data.is_empty() || data == "[DONE]" {
-                        continue;
-                    }
-
-                    let Ok(event) = serde_json::from_str::<Value>(data) else {
-                        continue;
-                    };
-
-                    if let Some(chunk) = parse_stream_event(&model, &event) {
-                        callback(chunk);
-                    }
+        loop {
+            let next = tokio::time::timeout(STREAM_IDLE, stream.next()).await;
+            let chunk = match next {
+                Ok(Some(chunk)) => chunk?,
+                Ok(None) => break,
+                Err(_) => {
+                    return Err(ProviderError::Api(
+                        "Grok stream stalled: no data for 10 minutes".into(),
+                    ));
                 }
+            };
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            normalize_newlines(&mut buffer);
+
+            while let Some(frame) = pop_sse_frame(&mut buffer) {
+                saw_event |= self.handle_frame(&model, &frame, &mut callback, &mut announced)?;
             }
+        }
+
+        if !buffer.trim().is_empty() {
+            saw_event |= self.handle_frame(&model, &buffer, &mut callback, &mut announced)?;
+        }
+        if announced {
+            eprintln!();
+        }
+        if !saw_event {
+            return Err(ProviderError::Api(
+                "Grok stream closed before the first event".into(),
+            ));
         }
 
         // Ensure callers always see a terminal chunk.
@@ -378,6 +508,47 @@ let url = format!("{}/responses", self.base_url.trim_end_matches('/'));
             "Grok embeddings not supported; use a local embedder for RAG".into(),
         ))
     }
+}
+
+fn normalize_newlines(buffer: &mut String) {
+    if buffer.contains('\r') {
+        *buffer = buffer.replace("\r\n", "\n").replace('\r', "\n");
+    }
+}
+
+fn pop_sse_frame(buffer: &mut String) -> Option<String> {
+    let idx = buffer.find("\n\n")?;
+    let frame = buffer[..idx].to_string();
+    buffer.drain(..idx + 2);
+    Some(frame)
+}
+
+fn event_type(event: &Value) -> &str {
+    event.get("type").and_then(|v| v.as_str()).unwrap_or("event")
+}
+
+fn reasoning_delta(event: &Value) -> Option<&str> {
+    match event_type(event) {
+        "response.reasoning_text.delta" | "response.reasoning_summary_text.delta" => event
+            .get("delta")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty()),
+        _ => None,
+    }
+}
+
+fn stream_error(event: &Value) -> Option<String> {
+    let ty = event_type(event);
+    if ty != "error" && ty != "response.failed" {
+        return None;
+    }
+    let message = event
+        .pointer("/error/message")
+        .or_else(|| event.get("message"))
+        .or_else(|| event.get("error"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Grok stream error");
+    Some(message.to_string())
 }
 
 fn to_grok_input(messages: &[Message]) -> Vec<Value> {
@@ -424,7 +595,7 @@ fn parse_stream_event(model: &str, event: &Value) -> Option<ChatResponse> {
                 message: Message::assistant(None, delta),
             })
         }
-        "response.completed" | "response.done" => Some(ChatResponse {
+        "response.completed" | "response.done" | "response.incomplete" => Some(ChatResponse {
             model: model.to_string(),
             content: String::new(),
             done: true,
@@ -490,4 +661,54 @@ fn extract_output_text(value: &Value) -> Option<String> {
         .pointer("/choices/0/message/content")
         .and_then(|v| v.as_str())
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oauth_defaults_to_cli_proxy() {
+        assert_eq!(resolve_base_url("http://localhost:11434", false), PROXY_BASE);
+        assert_eq!(resolve_base_url(API_BASE, false), PROXY_BASE);
+        assert_eq!(resolve_base_url(PROXY_BASE, false), PROXY_BASE);
+    }
+
+    #[test]
+    fn api_key_defaults_to_public_api() {
+        assert_eq!(resolve_base_url("http://localhost:11434", true), API_BASE);
+        assert_eq!(resolve_base_url(PROXY_BASE, true), API_BASE);
+    }
+
+    #[test]
+    fn explicit_gateway_is_preserved() {
+        assert_eq!(
+            resolve_base_url("https://grok-proxy.example.com/v1/", false),
+            "https://grok-proxy.example.com/v1"
+        );
+    }
+
+    #[test]
+    fn crlf_sse_frames_yield_text() {
+        let mut buffer =
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\r\n\r\n"
+                .to_string();
+        normalize_newlines(&mut buffer);
+        let frame = pop_sse_frame(&mut buffer).unwrap();
+        let data = frame.strip_prefix("data:").unwrap().trim();
+        let event: Value = serde_json::from_str(data).unwrap();
+        let chunk = parse_stream_event("grok-4.6", &event).unwrap();
+        assert_eq!(chunk.content, "hi");
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn reasoning_delta_is_not_answer_text() {
+        let event = json!({
+            "type": "response.reasoning_summary_text.delta",
+            "delta": "thinking"
+        });
+        assert!(parse_stream_event("grok-4.6", &event).is_none());
+        assert_eq!(reasoning_delta(&event), Some("thinking"));
+    }
 }

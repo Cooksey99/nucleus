@@ -14,7 +14,7 @@ async fn main() {
 
     let config = Config::new()
         .with_provider("grok")
-        .with_model("grok-4.5");
+        .with_model("grok-4.6");
     
     
     let registry = PluginRegistry::new(Permission::NONE);
@@ -45,6 +45,7 @@ async fn main() {
         }
 
     // Stream response with live printing. Follow-ups continue the same conversation.
+    println!("Waiting for Grok…");
     let start = std::time::Instant::now();
     let mut token_count = 0;
     let response = manager
