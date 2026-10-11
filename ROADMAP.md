@@ -81,8 +81,8 @@ Quality comes before speed. Each phase must meet everything below that has start
 
 **Testing**
 - Unit tests, plus mock-provider tests for the agent loop.
-- Recorded HTTP fixtures for every hosted provider, replayed in CI with no keys needed.
-- Live provider tests behind environment variables, run manually or on a schedule.
+- No paid API calls in tests or CI, and no API keys needed. Hosted providers are tested against a local mock server, using fixtures built from each provider's documented request, response and stream examples and from the test data in their official SDKs.
+- Local (mistral.rs) tests run a tiny GGUF model, which costs nothing.
 - Property tests (`proptest`) for parsers and text processing: the SSE stream parser, chunking, model-string parsing.
 
 **CI gates**
@@ -141,11 +141,11 @@ Every phase ends with CI green and meets the quality bar. Phases 0 → 0.5 → 1
 
 ### Phase 0.5: Spikes (settle the unknowns)
 Short experiments in scratch code (see Working agreements). Each produces a findings note in `docs/design/spikes/` and may change the design.
-Prerequisites: API keys for OpenAI, Anthropic and xAI (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `XAI_API_KEY`) and Gloo credentials. Ask the user for these; never commit them.
+No API keys and no paid calls. Hosted-provider spikes work from API references, OpenAPI specs, official SDK source and SDK test fixtures. A question that only a live call could answer is written down as open in the findings note and does not block the phase.
 - [ ] mistral.rs (latest crates.io release): tool calling, streamed tool calls, embedding models, JSON-schema constrained output, Metal, sharing a loaded model, compile time and dependency count
 - [ ] Gloo AI: auth method, and Responses API support for tools, streaming and structured output
 - [ ] xAI and OpenAI Responses API: function-call streaming and reasoning items with `store: false`; whether the Grok account proxy behaves the same
-- [ ] Anthropic Messages API: stream event shapes, thinking-block replay, prompt caching; choose the fixture-recording tool (e.g. `wiremock`)
+- [ ] Anthropic Messages API: stream event shapes, thinking-block replay, prompt caching; choose the HTTP mock tool (e.g. `wiremock`)
 - [ ] `rmcp`: maturity, transports, API stability
 - [ ] Batch APIs: OpenAI and Anthropic shapes and limits; xAI per-model discounts and unsupported models; whether Gloo offers batch at all; what mistral.rs offers for concurrent local requests
 - **Done when:** each spike has findings, and the decisions and design below are updated to match.
@@ -201,8 +201,8 @@ Prerequisites: API keys for OpenAI, Anthropic and xAI (`OPENAI_API_KEY`, `ANTHRO
   - local runs the requests concurrently through mistral.rs
   - providers without batch support (possibly Gloo) give a clear error, or run as limited concurrent normal requests if explicitly asked
   - covers one-shot and `extract` requests; multi-step tool loops are out of scope for batch
-- [ ] Shared test suite for every provider: recorded HTTP replays in CI, live runs when keys are set, a tiny GGUF model for local
-- **Done when:** one example runs unchanged against `local/`, `openai/`, `anthropic/`, `grok/` and `gloo/`, changing only the model string, and a batch example runs against OpenAI, Anthropic and local.
+- [ ] Shared test suite for every provider: fixture replays against a local mock server in CI, and a tiny GGUF model for local
+- **Done when:** one example runs unchanged against `local/` and the mocked `openai/`, `anthropic/`, `grok/` and `gloo/` endpoints, changing only the model string, and a batch example runs against the mocked OpenAI and Anthropic batch APIs and local.
 
 ### Phase 4: RAG
 - [ ] An `Embedder` trait separate from chat; local mistral.rs embeddings by default; OpenAI and Gloo embeddings optional
