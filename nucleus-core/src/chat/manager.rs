@@ -130,34 +130,7 @@ impl ChatManager {
 
     /// Creates a builder for configuring the chat manager.
     ///
-    /// The builder allows overriding LLM and embedding models while preserving
-    /// other configuration from the provided `Config`.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use nucleus_core::{ChatManager, Config};
-    /// use nucleus_plugin::{PluginRegistry, Permission};
-    ///
-    /// # async fn example() -> anyhow::Result<()> {
-    /// let config = Config::load_or_default();
-    /// let registry = PluginRegistry::new(Permission::READ_ONLY);
-    ///
-    /// // Override LLM model
-    /// let manager = ChatManager::builder(config.clone(), registry.clone())
-    ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
-    ///     .build()
-    ///     .await?;
-    ///
-    /// // Override both LLM and embedding models
-    /// let manager = ChatManager::builder(config, registry)
-    ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
-    ///     .with_embedding_model("BAAI/bge-small-en-v1.5")
-    ///     .build()
-    ///     .await?;
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// See [`ChatManagerBuilder`] for examples.
     fn builder() -> ChatManagerBuilder {
         ChatManagerBuilder::new()
     }
@@ -175,8 +148,9 @@ impl ChatManager {
     /// let config = Config::load_or_default();
     /// let registry = PluginRegistry::new(Permission::READ_ONLY);
     ///
+    /// let provider = MistralRsProvider::new(&config, Arc::new(PluginRegistry::new(Permission::NONE))).await?;
     /// let manager = ChatManager::new(config, registry).await?
-    ///     .with_provider(Arc::new(MistralRsProvider::new("qwen3:0.6b"))).await?;
+    ///     .with_provider(Arc::new(provider)).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -191,18 +165,16 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{ChatManager, Config, RagEngine};
+    /// # use nucleus_core::{ChatManager, Config, Provider, RagEngine};
     /// # use nucleus_plugin::{PluginRegistry, Permission};
     /// # use std::sync::Arc;
-    ///
-    /// # async fn example() -> anyhow::Result<()> {
+    /// # async fn example(provider: Arc<dyn Provider>) -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
     /// let registry = PluginRegistry::new(Permission::READ_ONLY);
-    /// let provider = Arc::new(/* create provider */);
     ///
     /// let custom_rag = RagEngine::new(&config, provider).await?;
     /// let manager = ChatManager::new(config, registry).await?
-    ///     .with_rag(custom_rag);
+    ///     .with_rag(Arc::new(custom_rag));
     /// # Ok(())
     /// # }
     /// ```
@@ -211,17 +183,7 @@ impl ChatManager {
         self
     }
 
-    /// Loads previously indexed documents from persistent storage.
-    ///
-    /// Should be called after creating the ChatManager to restore the knowledge base.
-    ///
-    /// # Returns
-    ///
-    /// The number of documents loaded from disk.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if loading fails.
+    /// Returns the number of documents in the knowledge base, or 0 when RAG is disabled.
     ///
     /// # Examples
     ///
@@ -232,8 +194,8 @@ impl ChatManager {
     /// # let config = Config::load_or_default();
     /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
     /// let manager = ChatManager::new(config, registry).await?;
-    /// let count = manager.load_knowledge_base().await?;
-    /// println!("Loaded {} documents", count);
+    /// let count = manager.knowledge_base_count().await;
+    /// println!("{count} documents in the knowledge base");
     /// # Ok(())
     /// # }
     /// ```
@@ -665,34 +627,23 @@ impl ChatManager {
 /// # Examples
 ///
 /// ```no_run
-/// use nucleus_core::{ChatManager, Config};
+/// use nucleus_core::{models::EmbeddingModel, ChatManagerBuilder, Config};
 /// use nucleus_plugin::{PluginRegistry, Permission};
 ///
 /// # async fn example() -> anyhow::Result<()> {
-/// let config = Config::load_or_default();
-/// let registry = PluginRegistry::new(Permission::READ_ONLY);
-///
 /// // Use defaults from config
-/// let manager = ChatManager::builder(config.clone(), registry.clone())
+/// let manager = ChatManagerBuilder::new()
+///     .with_config(Config::load_or_default())
+///     .with_registry(PluginRegistry::new(Permission::READ_ONLY))
 ///     .build()
 ///     .await?;
 ///
-/// // Override LLM model
-/// let manager = ChatManager::builder(config.clone(), registry.clone())
+/// // Override the LLM and embedding models
+/// let manager = ChatManagerBuilder::new()
+///     .with_config(Config::load_or_default())
+///     .with_registry(PluginRegistry::new(Permission::READ_ONLY))
 ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
-///     .build()
-///     .await?;
-///
-/// // Override embedding model
-/// let manager = ChatManager::builder(config.clone(), registry.clone())
-///     .with_embedding_model("Qwen/Qwen3-Embedding-0.6B")
-///     .build()
-///     .await?;
-///
-/// // Override both
-/// let manager = ChatManager::builder(config, registry)
-///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
-///     .with_embedding_model("Qwen/Qwen3-Embedding-0.6B")
+///     .with_embedding_model(EmbeddingModel::default())
 ///     .build()
 ///     .await?;
 /// # Ok(())
@@ -734,18 +685,17 @@ impl ChatManagerBuilder {
     /// Override the default LLM model from the configuration.
     ///
     /// Accepts a model identifier, which may be:
-    /// - A Hugging Face repo ID: `"Qwen/Qwen3-1.6B-Instruct"`
+    /// - A Hugging Face repo ID: `"Qwen/Qwen3-1.6B-Instruct"`
     /// - A local GGUF path: `"/path/to/model.gguf"`
     /// - A quantized model name: `"TheBloke/Llama-2-7B-Chat-GGUF"`
     ///
     /// # Examples
     ///
-    /// **Hugging Face model**
-    /// ```
-    /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// **Hugging Face model**
+    /// ```no_run
+    /// # use nucleus_core::ChatManagerBuilder;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let manager = ChatManager::builder(Config::load_or_default(), PluginRegistry::new(Permission::READ_ONLY))
+    /// let manager = ChatManagerBuilder::new()
     ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
     ///     .build()
     ///     .await?;
@@ -754,21 +704,20 @@ impl ChatManagerBuilder {
     /// ```
     ///
     /// **Local GGUF model**
-    /// ```
-    /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// ```no_run
+    /// # use nucleus_core::ChatManagerBuilder;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let manager = ChatManager::builder(Config::load_or_default(), PluginRegistry::new(Permission::READ_ONLY))
+    /// let manager = ChatManagerBuilder::new()
     ///     .with_llm_model("/Users/alice/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf")
     ///     .build()
     ///     .await?;
     /// # Ok(())
     /// # }
-    /// ````
+    /// ```
     ///
     /// **Local GGUF Blob (Ollama) — NOT CURRENTLY SUPPORTED**
-    /// ```
-    /// let manager = ChatManager::builder(config, registry)
+    /// ```text
+    /// let manager = ChatManagerBuilder::new()
     ///     .with_llm_model("~/.ollama/models/blobs/sha256-0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5")  // Q4_K_M
     ///     .build()
     ///     .await?;
@@ -782,18 +731,19 @@ impl ChatManagerBuilder {
     ///
     /// # Arguments
     ///
-    /// * `model` - Embedding model identifier (HuggingFace repo, GGUF path, etc.)
+    /// * `model` - Embedding model definition (HuggingFace repo or local path, plus dimensions)
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # use nucleus_core::{models::EmbeddingModel, ChatManagerBuilder};
     /// # async fn example() -> anyhow::Result<()> {
-    /// # let config = Config::load_or_default();
-    /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
-    /// let manager = ChatManager::builder(config, registry)
-    ///     .with_embedding_model("Qwen/Qwen3-Embedding-0.6B")
+    /// let manager = ChatManagerBuilder::new()
+    ///     .with_embedding_model(EmbeddingModel {
+    ///         hf_repo: Some("Qwen/Qwen3-Embedding-0.6B".into()),
+    ///         embedding_dim: 1024,
+    ///         ..EmbeddingModel::default()
+    ///     })
     ///     .build()
     ///     .await?;
     /// # Ok(())
@@ -816,13 +766,13 @@ impl ChatManagerBuilder {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{ChatManager, Config};
+    /// # use nucleus_core::{ChatManagerBuilder, Config};
     /// # use nucleus_core::provider::ProviderType;
     /// # use nucleus_plugin::{PluginRegistry, Permission};
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
     /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
-    /// let manager = ChatManager::builder()
+    /// let manager = ChatManagerBuilder::new()
     ///     .with_config(config)
     ///     .with_registry(registry)
     ///     .with_provider(ProviderType::CoreML)

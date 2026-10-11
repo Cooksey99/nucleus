@@ -1,6 +1,6 @@
 use nucleus_plugin::{Permission, PluginRegistry};
 use nucleus_std::ReadFilePlugin;
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 #[tokio::main]
 async fn main() {
@@ -10,8 +10,8 @@ async fn main() {
     let mut registry = PluginRegistry::new(Permission::READ_ONLY);
 
     // Register the ReadFilePlugin
-    let read_plugin = Arc::new(ReadFilePlugin::new());
-    if registry.register(read_plugin.clone()) {
+    let read_plugin = ReadFilePlugin::new();
+    if registry.register(ReadFilePlugin::new()).await {
         println!("ReadFilePlugin registered\n");
     } else {
         eprintln!("Failed to register plugin (permission denied)");
@@ -68,6 +68,6 @@ async fn main() {
 
     // Test 3: Show plugin specs (for LLM)
     println!("Test 3: Plugin specifications for LLM");
-    let specs = registry.plugin_specs();
+    let specs = registry.plugin_specs().await;
     println!("{}", serde_json::to_string_pretty(&specs).unwrap());
 }

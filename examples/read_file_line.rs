@@ -9,7 +9,6 @@
 use nucleus_core::{ChatManager, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 use nucleus_std::ReadFilePlugin;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load_or_default();
 
     let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-    registry.register(ReadFilePlugin::new());
+    registry.register(ReadFilePlugin::new()).await;
 
     let manager = ChatManager::new(config, registry).await?;
 
