@@ -110,7 +110,7 @@ Quality comes before speed. Each phase must meet everything below that has start
 
 ## Working agreements
 
-- Work on a branch per phase or logical change, with one PR into `main` for each. Never commit directly to `main`.
+- The 0.2 rewrite lives on the `overhaul` branch. Work on a branch per phase or logical change, with one PR into `overhaul` for each. `overhaul` merges into `main` when 0.2 is released. Never commit directly to `main` or `overhaul`.
 - Tick checkboxes in this file in the same PR that completes them. When a spike or design note changes a decision, update this file in that PR.
 - Design notes live in `docs/design/`. Spike findings live in `docs/design/spikes/`.
 - Spike code lives in a throwaway `spikes/` directory and is never merged. Only the findings notes are merged.
@@ -149,7 +149,7 @@ Every phase ends with CI green and meets the quality bar. Phases 0 → 0.5 → 1
 ### Phase 0: Guardrails
 - [x] CI runs `cargo build --all-targets`, `cargo test --workspace` and `cargo test --doc` on Linux and macOS, and `cargo clippy` on Linux (it reports warnings without failing until the end of Phase 1)
 - [x] Fix or delete broken tests and examples: the registry test, the nucleus-std examples, and `register()` calls that are never awaited. Delete anything Phase 1 removes anyway rather than fixing it.
-- **Done when:** CI is green on `main`.
+- **Done when:** CI is green on `overhaul`.
 
 ### Phase 0.5: Spikes (settle the unknowns)
 Short experiments in scratch code (see Working agreements). Each produces a findings note in `docs/design/spikes/` and may change the design.
