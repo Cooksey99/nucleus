@@ -34,7 +34,7 @@ let invoice: Invoice = agent.extract(&pdf_text).await?;                         
 // Level 3: implement Provider, Tool, Embedder, VectorStore or ConversationStore yourself
 ```
 
-- `Agent` is settings only (model, system prompt, tools, knowledge, options). It holds no conversation state, is cheap to clone, and can be shared across tasks and users. MCP servers are the exception under discussion (see Decisions → Open).
+- `Agent` is settings only (model, system prompt, tools, knowledge, options). It holds no conversation state, is cheap to clone, and can be shared across tasks and users. The one exception is MCP: an agent built with MCP servers holds shared handles to the live connections (see Decisions).
 - `Conversation` is plain data with a stable ID. It is serializable, so it can be saved and resumed.
 - Multiple agents need no orchestrator: `agent.as_tool(..)` handles delegation, and running another agent on the same conversation is a handoff. Add an `Orchestrator` type only when a real need appears, such as a shared budget or tracing across agents.
 - MCP servers are named (`"fs"` above) so their tools can be prefixed (`fs__read_file`). `McpServer` is a serde spec, so `AgentSpec` can hold it.
@@ -135,12 +135,12 @@ Confirmed:
 - HTTP mocking: `mockito`, the only candidate that delivers a body in delayed chunks, behind a nucleus test helper, plus a small hand-rolled tokio server for connection faults. (Phase 0.5 spike)
 - Minimum supported Rust version is at least 1.88, which both `rmcp` and mistral.rs 0.8.1 require.
 - Move to reqwest 0.13 so `mcp` doesn't build a second reqwest.
+- mistral.rs: use the latest GitHub release, v0.9.4, as a git dependency. It has the tool-calling fixes that crates.io 0.8.1 lacks. crates.io doesn't accept git dependencies, so publishing nucleus waits until upstream publishes 0.9.x or later (tracked in Phase 6).
+- Gloo defaults to the `Direct` endpoint (prompt sent unchanged, no fee), so it behaves like the other providers. `Guarded` is a provider option.
+- MCP servers on `Agent`: an agent built with MCP servers holds shared `Arc` handles to the live connections. Clones share them, and dropping the last clone shuts the servers down. `AgentSpec` holds only the `McpServer` specs and connects at `build().await`.
 
 Open (to settle before or in the Phase 2 design note):
-- [ ] mistral.rs version. crates.io stops at 0.8.1 (2026-04-02). Most tool-calling fixes are only in GitHub v0.9.x, which can't be published because it depends on candle through a git revision. A git dependency blocks publishing nucleus to crates.io. Options: pin `=0.8.1` and work around its bugs, or ask upstream to publish 0.9.x before our release.
-- [ ] Gloo's default endpoint: `Guarded` (Gloo's recommendation; moderation and a 6.5% fee) or `Direct` (prompt sent unchanged, no fee, matching how the other providers behave).
 - [ ] Retrieved RAG text: appended to the persisted user turn (so history stays append-only), exposed only as a `search_knowledge` tool, or both, with one as the default.
-- [ ] MCP servers on `Agent`: an agent built with MCP servers holds shared `Arc` handles to the live connections; clones share them, and dropping the last clone shuts the servers down. `AgentSpec` holds only the `McpServer` specs and connects at `build().await`.
 
 ## Phases
 
@@ -169,6 +169,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 - [ ] Feature flags: `hosted` (default), `local`, `rag`, `lancedb`, `mcp`, `experimental`, `metal`, `cuda`
 - [ ] Set the minimum supported Rust version (1.88 or later) and the edition (2021 or 2024)
 - [ ] Move to reqwest 0.13
+- [ ] Move mistral.rs from the current git commit to the v0.9.4 tag, and re-check the spike findings measured on 0.8.1 (tool-call history, one call per turn, JSON output that never stops, the Metal prefix-cache and short-embedding bugs); record what changed in `docs/design/spikes/mistralrs.md`
 - Existing behavior (`ChatManager`, Grok, mistral.rs behind `local`, RAG behind `rag`) keeps compiling and passing tests. The rewrites happen in later phases.
 - **Done when:** the default build depends on little more than reqwest, serde and tokio, and the Phase 1 CI gates pass.
 
@@ -213,7 +214,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
   - a stream that ends without a terminal event is an error; keep the incomplete reason and error codes
   - unknown event types are passed through as provider events and logged with `tracing`
   - a private dialect per provider: flat or nested tool definitions, structured-output field, error body shape, reasoning effort values, which request fields are allowed
-  - Gloo gets an endpoint option (`Guarded` or `Direct`; default per the open decision)
+  - Gloo gets an endpoint option: `Direct` by default, `Guarded` on request
   - the Grok account proxy is its own dialect (stricter: `instructions` required, ciphertext required on replay, extra headers)
 - [ ] Messages protocol for Anthropic, over raw HTTP:
   - streaming with text, thinking, signature and `input_json_delta`; tolerate padding after the JSON; `ping` counts as liveness for the idle timeout
@@ -225,7 +226,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
   - use the request's tools (the whole JSON Schema for parameters), sampling settings and history
   - always stream internally and drain the stream in our own task, so a slow consumer can't stall other requests on the model; this also gives timeouts and cancellation
   - send the full sampling settings on every request (mistral.rs defaults to `top_k = 1`); make Qwen3 thinking an explicit option
-  - strip tool-call markup from the text; replay earlier tool calls in a form the chat template keeps (0.8.1 loses them otherwise)
+  - strip tool-call markup from the text; make sure earlier tool calls survive in the chat template (0.8.1 silently dropped them; check on 0.9.4)
   - load the model once and share it (`Arc<Model>`); a chat and an embedding model can load together
   - prefix cache and paged attention off by default (NaN logits and a hang at 16 concurrent requests on Metal)
   - `Local::builder()` for quantization, device and context size
@@ -276,6 +277,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 - [ ] README built around levels 1–3
 - [ ] Examples built in CI: one-shot, batch, agent, local vs. hosted, custom tool, typed extract, RAG, MCP, streaming, swap and handoff
 - [ ] Cut the mdbook down to match the code; its code blocks become compiled doctests
+- [ ] The mistral.rs dependency is a crates.io release (needs upstream to publish 0.9.x or later; until then nucleus can't be published)
 - [ ] Changelog, release 0.2
 
 ## Known issues in code being kept or reworked
