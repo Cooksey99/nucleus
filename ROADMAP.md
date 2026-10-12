@@ -139,8 +139,9 @@ Confirmed:
 - Gloo defaults to the `Direct` endpoint (prompt sent unchanged, no fee), so it behaves like the other providers. `Guarded` is a provider option.
 - MCP servers on `Agent`: an agent built with MCP servers holds shared `Arc` handles to the live connections. Clones share them, and dropping the last clone shuts the servers down. `AgentSpec` holds only the `McpServer` specs and connects at `build().await`.
 
-Open (to settle before or in the Phase 2 design note):
-- [ ] Retrieved RAG text: appended to the persisted user turn (so history stays append-only), exposed only as a `search_knowledge` tool, or both, with one as the default.
+- Retrieved knowledge is added to the user's turn by default (`KnowledgeMode::Inject`) and saved in history, which keeps history append-only. It works the same on every model, including small local ones, and needs no extra round trip. `KnowledgeMode::Tool` (a `search_knowledge` tool the model calls itself, better for multi-step agents on strong models) and `KnowledgeMode::Both` are one setting away. The Phase 4 benchmark confirms the default before release.
+
+Open: none. New questions go to the Phase 2 design note.
 
 ## Phases
 
@@ -188,6 +189,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
   - tool calls have IDs, and tool-call input is stored as raw JSON so it replays byte for byte
   - provider-specific parts (Anthropic thinking blocks, Responses reasoning items with `encrypted_content`) are tagged with the endpoint dialect and model, and replayed unchanged to the same dialect. Anthropic thinking goes back to any Claude model, because the API ignores blocks a model can't read. Responses reasoning is dropped when the model family changes. Everything provider-specific is dropped for other providers, and reasoning without `encrypted_content` is always dropped.
   - tool calls and tool results are never dropped
+  - user messages can carry retrieved knowledge as its own part (text plus source file and line range), separate from what the user typed, so apps can show citations or hide it
 - [ ] The system prompt belongs to the agent and is added to each request, never saved in history
 - [ ] `Agent`, `Conversation` (with a stable ID, used for prompt-cache keys), `RunOptions`, `with_model` / `with_system` / `with_tools`, `as_tool`
 - [ ] `Tool` trait plus `tool_fn` with typed arguments (schemars)
@@ -258,7 +260,9 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 - [ ] `.knowledge(path)`: index on first use, then re-index only files whose content hash changed
 - [ ] File filtering matches whole path components, honours `.gitignore`, and skips binaries
 - [ ] Chunk on paragraphs and lines with a size limit; record source file and line range for citations
-- [ ] Retrieved text reaches the model in a way that keeps history append-only (see the open decision)
+- [ ] `KnowledgeMode::Inject` (default): search with the user's message and add the results to that turn as a knowledge part. Only results above a relevance threshold are added, so a message like "thanks" adds nothing. Excerpts already in the conversation aren't added again. Results are capped by count and tokens.
+- [ ] `KnowledgeMode::Tool` and `KnowledgeMode::Both`: a `search_knowledge` tool that returns the same excerpts with citations
+- [ ] A small retrieval benchmark run on local models only (no paid calls), comparing the modes, which confirms the default before release
 - **Done when:** RAG works in three lines with zero setup and is tested.
 
 ### Phase 5: MCP
@@ -300,7 +304,7 @@ Found in an audit on 2026-10-09 and in the Phase 0.5 spikes. Most of the codebas
   - hard-coded 30s per-chunk and 60s stream-start timeouts
   - calls `with_logging`, which installs a global stderr logger
 - `nucleus-core/src/rag/`: `RagEngine::new` unwraps `config.rag` (panics when RAG isn't configured); `clear_knowledge_base` never awaits the clear; LanceDB only appends, so re-indexing duplicates chunks; the default `chunk_size` is set to `embedding_dim`.
-- `nucleus-core/src/chat/manager.rs` (the reference for the new agent loop): no step limit, tool errors end the turn, and the system prompt is stored as a history message. It saves retrieved RAG text into history; whether that is right now depends on the open RAG decision. Worth keeping: the history rollback on failure (`run_turn`) and `query_with`.
+- `nucleus-core/src/chat/manager.rs` (the reference for the new agent loop): no step limit, tool errors end the turn, and the system prompt is stored as a history message. It saves retrieved RAG text into history as plain text; the new design keeps it in history too, but as a separate knowledge part. Worth keeping: the history rollback on failure (`run_turn`) and `query_with`.
 - All three YAML configs (`config.yaml`, `examples/config.yaml`, `nucleus-core/config.yaml`) fail to parse, and `Config::load_or_default` silently falls back to defaults.
 
 ## Later (the path exists, not scheduled)
