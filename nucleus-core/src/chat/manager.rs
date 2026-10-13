@@ -756,7 +756,7 @@ impl ChatManagerBuilder {
 
     /// Override the provider type.
     ///
-    /// This allows you to specify which LLM provider to use (Ollama, MistralRs, or CoreML).
+    /// This allows you to specify which LLM provider to use (Ollama, MistralRs, or Grok).
     /// The provider will be constructed automatically using the config and registry.
     ///
     /// # Arguments
@@ -775,7 +775,7 @@ impl ChatManagerBuilder {
     /// let manager = ChatManagerBuilder::new()
     ///     .with_config(config)
     ///     .with_registry(registry)
-    ///     .with_provider(ProviderType::CoreML)
+    ///     .with_provider(ProviderType::MistralRs)
     ///     .build()
     ///     .await?;
     /// # Ok(())
