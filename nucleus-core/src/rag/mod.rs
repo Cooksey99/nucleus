@@ -103,12 +103,12 @@ impl RagEngine {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::{Config, rag::Rag, provider::OllamaProvider};
+    /// # use nucleus_core::{Config, Provider, RagEngine};
     /// # use std::sync::Arc;
-    /// # async fn example() {
-    /// let config = Config::default();
-    /// let provider = Arc::new(OllamaProvider::new(&config.llm.base_url));
-    /// let manager = Rag::new(&config, provider).await.unwrap();
+    /// # async fn example(provider: Arc<dyn Provider>) -> anyhow::Result<()> {
+    /// let config = Config::load_or_default();
+    /// let engine = RagEngine::new(&config, provider).await?;
+    /// # Ok(())
     /// # }
     /// ```
     pub async fn new(config: &Config, provider: Arc<dyn Provider>) -> Result<Self> {
@@ -307,11 +307,12 @@ impl RagEngine {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::{Config, rag::Rag, ollama::Client};
-    /// # async fn example(manager: Rag) {
-    /// let dirs = vec!["./src", "./docs", "./examples"];
-    /// let count = manager.index_directories(&dirs).await.unwrap();
-    /// println!("Indexed {} files", count);
+    /// # use nucleus_core::RagEngine;
+    /// # async fn example(engine: RagEngine) -> anyhow::Result<()> {
+    /// let dirs = ["./src", "./docs", "./examples"];
+    /// let count = engine.index_directories(&dirs).await?;
+    /// println!("Indexed {count} files");
+    /// # Ok(())
     /// # }
     /// ```
     pub async fn index_directories(&self, dir_paths: &[&str]) -> Result<usize> {
@@ -498,15 +499,16 @@ impl RagEngine {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::{Config, rag::Manager, ollama::Client};
-    /// # async fn example(manager: Manager) {
+    /// # use nucleus_core::RagEngine;
+    /// # async fn example(engine: RagEngine) -> anyhow::Result<()> {
     /// // Remove a specific file
-    /// let removed = manager.remove_from_knowledge_base("./src/main.rs").await.unwrap();
-    /// println!("Removed {} chunks", removed);
+    /// let removed = engine.remove_from_knowledge_base("./src/main.rs").await?;
+    /// println!("Removed {removed} chunks");
     ///
     /// // Remove an entire directory
-    /// let removed = manager.remove_from_knowledge_base("./docs").await.unwrap();
-    /// println!("Removed {} chunks", removed);
+    /// let removed = engine.remove_from_knowledge_base("./docs").await?;
+    /// println!("Removed {removed} chunks");
+    /// # Ok(())
     /// # }
     /// ```
     pub async fn remove_from_knowledge_base(&self, source_path: &str) -> Result<usize> {

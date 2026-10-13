@@ -42,6 +42,8 @@ impl MistralRsProvider {
     ///
     /// # Model Resolution
     ///
+    /// The model comes from `config.llm.model`:
+    ///
     /// - `"repo:file.gguf"` - HuggingFace GGUF (pre-quantized, fastest)
     /// - `"/path/file.gguf"` - Local GGUF file
     /// - `"Repo/Model-ID"` - HuggingFace model (quantizes on load)
@@ -49,16 +51,24 @@ impl MistralRsProvider {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::provider::MistralRsProvider;
+    /// # use nucleus_core::{provider::MistralRsProvider, Config};
+    /// # use nucleus_plugin::{Permission, PluginRegistry};
+    /// # use std::sync::Arc;
     /// # async fn example() -> anyhow::Result<()> {
+    /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
+    /// let mut config = Config::load_or_default();
+    ///
     /// // Pre-quantized GGUF from HuggingFace (recommended, fastest)
-    /// let provider = MistralRsProvider::new("Qwen/Qwen3-0.6B-Instruct-GGUF:qwen3-0_6b-instruct-q4_k_m.gguf").await?;
+    /// config.llm.model = "Qwen/Qwen3-0.6B-Instruct-GGUF:qwen3-0_6b-instruct-q4_k_m.gguf".into();
+    /// let provider = MistralRsProvider::new(&config, Arc::clone(&registry)).await?;
     ///
     /// // Local GGUF file
-    /// let provider = MistralRsProvider::new("./models/qwen3-0.6b.gguf").await?;
+    /// config.llm.model = "./models/qwen3-0.6b.gguf".into();
+    /// let provider = MistralRsProvider::new(&config, Arc::clone(&registry)).await?;
     ///
     /// // HuggingFace model (slow, quantizes on load)
-    /// let provider = MistralRsProvider::new("Qwen/Qwen3-0.6B-Instruct").await?;
+    /// config.llm.model = "Qwen/Qwen3-0.6B-Instruct".into();
+    /// let provider = MistralRsProvider::new(&config, registry).await?;
     /// # Ok(())
     /// # }
     /// ```

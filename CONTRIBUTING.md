@@ -8,7 +8,7 @@ Thank you for your interest in contributing to Nucleus! This document provides g
 2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/nucleus.git`
 3. Create a feature branch: `git checkout -b feature/your-feature-name`
 4. Make your changes
-5. Run tests: `cargo test`
+5. Run tests: `cargo test --workspace`
 6. Commit your changes: `git commit -m "Add your feature"`
 7. Push to your fork: `git push origin feature/your-feature-name`
 8. Open a Pull Request
@@ -17,8 +17,8 @@ Thank you for your interest in contributing to Nucleus! This document provides g
 
 ### Prerequisites
 
-- Rust 1.70+ (latest stable recommended)
-- Cargo
+- Rust (latest stable)
+- `protoc`, the Protocol Buffers compiler, needed to build LanceDB (`brew install protobuf` or `apt install protobuf-compiler`)
 
 ### Building
 
@@ -28,9 +28,13 @@ cargo build
 
 ### Testing
 
+These are the commands CI runs (see `.github/workflows/ci.yml`):
+
 ```bash
-cargo test
-cargo test --all-features
+cargo build --workspace --all-targets
+cargo test --workspace --all-targets
+cargo test --workspace --doc
+cargo clippy --workspace --all-targets
 ```
 
 ### Running Examples

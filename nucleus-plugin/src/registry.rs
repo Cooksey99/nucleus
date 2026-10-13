@@ -113,21 +113,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_registry_permissions() {
+    #[tokio::test]
+    async fn test_registry_permissions() {
         let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-        // let plugin = TestPlugin;
 
-        // assert!(registry.register(plugin).await);
+        assert!(registry.register(TestPlugin).await);
         assert!(registry.get("test").is_some());
     }
 
-    #[test]
-    fn test_registry_permission_denial() {
+    #[tokio::test]
+    async fn test_registry_permission_denial() {
         let mut registry = PluginRegistry::new(Permission::NONE);
-        // let plugin = TestPlugin;
 
-        // assert!(!registry.register(plugin));
+        assert!(!registry.register(TestPlugin).await);
         assert!(registry.get("test").is_none());
     }
 }

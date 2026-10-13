@@ -1,6 +1,5 @@
 use nucleus_plugin::{Permission, PluginRegistry};
 use nucleus_std::SearchPlugin;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -8,8 +7,7 @@ async fn main() {
 
     let mut registry = PluginRegistry::new(Permission::READ_ONLY);
 
-    let search_plugin = Arc::new(SearchPlugin::new());
-    if registry.register(search_plugin) {
+    if registry.register(SearchPlugin::new()).await {
         println!("SearchPlugin registered\n");
     } else {
         eprintln!("Failed to register plugin (permission denied)");
@@ -89,6 +87,6 @@ async fn main() {
 
     // Test 5: Show plugin specs (for LLM)
     println!("Test 5: Plugin specifications for LLM");
-    let specs = registry.plugin_specs();
+    let specs = registry.plugin_specs().await;
     println!("{}", serde_json::to_string_pretty(&specs).unwrap());
 }

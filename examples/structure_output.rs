@@ -1,4 +1,4 @@
-use nucleus::{ChatManager, ChatManagerBuilder, Config};
+use nucleus::{ChatManagerBuilder, Config};
 use nucleus_plugin::{Permission, PluginRegistry};
 use serde_json::json;
 
