@@ -164,7 +164,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 - **Done when:** each spike has findings, and the decisions and design below are updated to match.
 
 ### Phase 1: Delete and consolidate
-- [ ] Remove everything in the "Remove:" decision above, plus leftovers from the earlier project (Go entries in `.gitignore`, `llm-workspace` socket)
+- [x] Remove everything in the "Remove:" decision above, plus leftovers from the earlier project (Go entries in `.gitignore`, `llm-workspace` socket)
 - [ ] Merge the crates into `nucleus`: `provider`, `agent`, `tool`, `rag`, `mcp`, `tools`
 - [ ] Remove `Permission`. Tools become `Arc<dyn Tool>` with no `Mutex`, and registration is synchronous
 - [ ] Feature flags: `hosted` (default), `local`, `rag`, `lancedb`, `mcp`, `experimental`, `metal`, `cuda`

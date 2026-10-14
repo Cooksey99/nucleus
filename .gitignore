@@ -3,16 +3,7 @@
 **/*.rs.bk
 *.pdb
 
-# Go
-*.test
-*.out
-go.work
-go.work.sum
-vendor/
-
 # Binaries
-llm-app
-llm-server
 *.exe
 *.dll
 *.so
@@ -23,12 +14,6 @@ data/
 *.db
 *.sqlite
 *.log
-
-# Qdrant storage
-storage/
-qdrant_storage/
-.qdrant/
-.qdrant-initialized
 
 # Config (sensitive)
 config/secrets.yaml

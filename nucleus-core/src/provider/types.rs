@@ -8,20 +8,14 @@ use crate::models::EmbeddingModel;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderType {
-    Ollama,
     MistralRs,
-    #[cfg(any(target_os = "macos", feature = "coreml"))]
-    CoreML,
     Grok,
 }
 
 impl ProviderType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ProviderType::Ollama => "ollama",
             ProviderType::MistralRs => "mistralrs",
-            #[cfg(any(target_os = "macos", feature = "coreml"))]
-            ProviderType::CoreML => "coreml",
             ProviderType::Grok => "grok",
         }
     }

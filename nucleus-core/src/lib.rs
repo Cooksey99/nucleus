@@ -3,32 +3,26 @@
 //! nucleus-core - Core AI engine infrastructure
 //!
 //! Provides the foundational components for building AI-powered applications:
-//! - LLM provider abstraction (Ollama, mistral.rs, etc.)
+//! - LLM provider abstraction (mistral.rs, Grok, and others)
 //! - RAG (Retrieval Augmented Generation)
 //! - Configuration management
-//! - Server API (primary interface)
 //!
 //! ## Primary API
 //!
-//! Users should interact with nucleus via the `Server` API.
+//! Users should interact with nucleus via `ChatManager`.
 
 // Public modules
 pub mod chat;
 pub mod config;
-pub mod detection;
 pub mod models;
 pub mod patterns;
 pub mod provider;
-pub mod qdrant_helper;
 pub mod rag;
-pub mod server;
 
 // Public exports
 pub use chat::{ChatManager, ChatManagerBuilder, CommandEffect};
 pub use config::{Config, IndexerConfig};
-pub use detection::{check_ollama_silent, detect_ollama, DetectionError, OllamaInfo};
 pub use rag::RagEngine;
-pub use server::Server;
 
 // Provider exports
 pub use provider::{

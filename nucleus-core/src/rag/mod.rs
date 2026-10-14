@@ -41,7 +41,6 @@
 mod embedder;
 mod indexer;
 mod lancedb_store;
-mod qdrant_store;
 mod store;
 mod types;
 pub mod utils;

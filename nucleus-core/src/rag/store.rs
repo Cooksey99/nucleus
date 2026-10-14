@@ -3,7 +3,6 @@
 //! This module provides a unified interface for different vector database implementations.
 
 use super::lancedb_store::LanceDbStore;
-use super::qdrant_store::QdrantStore;
 use super::types::{Document, SearchResult};
 use crate::config::{StorageConfig, StorageMode};
 use anyhow::Result;
@@ -13,7 +12,7 @@ use std::sync::Arc;
 /// Unified interface for vector database operations.
 ///
 /// Implementations handle document storage, similarity search, and metadata queries
-/// across different vector database backends (LanceDB for embedded, Qdrant for gRPC).
+/// LanceDB is the embedded backend.
 #[async_trait]
 pub trait VectorStore: Send + Sync {
     /// Adds or updates multiple documents in the store.
@@ -53,8 +52,7 @@ pub trait VectorStore: Send + Sync {
 
 /// Creates a vector store instance based on the storage mode.
 ///
-/// - `Embedded` mode uses LanceDB for zero-setup, in-process storage
-/// - `Grpc` mode uses Qdrant for remote server connectivity
+/// `Embedded` mode uses LanceDB for zero-setup, in-process storage.
 ///
 /// # Arguments
 ///
@@ -71,10 +69,6 @@ pub async fn create_vector_store(
     match storage_config.storage_mode.clone() {
         StorageMode::Embedded { path } => {
             let store = LanceDbStore::new(storage_config, &path, vector_size.into()).await?;
-            Ok(Arc::new(store))
-        }
-        StorageMode::Grpc { .. } => {
-            let store = QdrantStore::new(storage_config, vector_size).await?;
             Ok(Arc::new(store))
         }
     }

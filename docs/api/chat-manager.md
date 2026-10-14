@@ -227,16 +227,6 @@ let response = manager.query("What's in Cargo.toml?").await?;
 println!("{}", response);
 ```
 
-### Custom Provider
-
-```rust
-use nucleus_core::provider::OllamaProvider;
-
-let custom_provider = Arc::new(OllamaProvider::new("llama3.2"));
-let manager = ChatManager::new(config, registry).await?
-    .with_provider(custom_provider).await?;
-```
-
 ## See Also
 
 - [Plugin Trait](./plugin-trait.md) - Creating custom tools

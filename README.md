@@ -10,7 +10,7 @@ Nucleus is a **library**, not an application. It provides the building blocks fo
 
 - **Tool-Augmented LLM**: Execute real actions (read files, search code, run commands) instead of just text generation
 - **Plugin System**: Extensible tools with permission controls
-- **Local-First**: Works with local LLMs (Ollama, llama.cpp, etc.) - no data leaves your machine
+- **Local-First**: Works with a local mistral.rs model - no data leaves your machine
 - **Modular Architecture**: Use only what you need
 
 ## Example Usage
@@ -71,7 +71,7 @@ Nucleus is structured as a workspace with clear separation:
 - **nucleus-core**: LLM orchestration, chat management, configuration
 - **nucleus-plugin**: Plugin trait and registry system
 - **nucleus-std**: Standard plugins (file I/O, search, exec)
-- **nucleus-dev**: Developer-specific plugins (git, LSP integration)
+- **nucleus-cli**: `login` and `logout` for a Grok account
 - **nucleus**: Convenience wrapper with feature flags
 
 ## Installation
@@ -90,15 +90,9 @@ nucleus = { version = "0.1", default-features = false }
 nucleus-core = "0.1"
 ```
 
-For full functionality including dev tools:
-```toml
-[dependencies]
-nucleus = { version = "0.1", features = ["full"] }
-```
-
 ### Vector Database (for RAG)
 
-Nucleus supports vector databases for persistent storage in RAG (Retrieval Augmented Generation):
+Nucleus uses embedded LanceDB for persistent storage in RAG (Retrieval Augmented Generation):
 
 - **Automatic deduplication**: Re-indexing replaces old documents
 - **Persistent storage**: Data survives restarts

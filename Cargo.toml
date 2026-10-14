@@ -4,7 +4,6 @@ members = [
     "nucleus-core",
     "nucleus-plugin",
     "nucleus-std",
-    "nucleus-dev",
     "nucleus-cli",
 ]
 
@@ -30,7 +29,6 @@ description = "Privacy-first, modular AI engine for building customizable develo
 nucleus-core.workspace = true
 nucleus-plugin.workspace = true
 nucleus-std = { workspace = true, optional = true }
-nucleus-dev = { workspace = true, optional = true }
 async-trait.workspace = true
 dirs = "6.0.0"
 schemars.workspace = true
@@ -39,12 +37,9 @@ tokio.workspace = true
 [features]
 default = ["std"]
 std = ["nucleus-std"]
-dev = ["nucleus-dev"]
-full = ["std", "dev"]
 # GPU/ML acceleration (pass-through to nucleus-core)
 metal = ["nucleus-core/metal"]
 cuda = ["nucleus-core/cuda"]
-coreml = ["nucleus-core/coreml"]
 
 [dev-dependencies]
 tokio.workspace = true
@@ -82,5 +77,4 @@ schemars = "1.2.0"
 nucleus-core = { path = "nucleus-core", version = "0.1.0" }
 nucleus-plugin = { path = "nucleus-plugin", version = "0.1.0" }
 nucleus-std = { path = "nucleus-std", version = "0.1.0" }
-nucleus-dev = { path = "nucleus-dev", version = "0.1.0" }
 

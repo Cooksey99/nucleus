@@ -383,7 +383,6 @@ let output = Command::new("git")
 ## Plugin Locations
 
 - **`nucleus-std`** - General-purpose plugins (files, search, commands)
-- **`nucleus-dev`** - Developer-specific plugins (LSP, git, testing)
 - **Custom crates** - Your own plugin collections
 
 ## Next Steps

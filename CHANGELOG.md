@@ -10,6 +10,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 - CI workflow (`.github/workflows/ci.yml`): build, test and doctest on Linux and macOS, plus a clippy report. Clippy warnings don't fail the build yet.
 
+### Removed
+- CoreML (archived on `archive/coreml`), the IPC server, Ollama, Qdrant, `ModelRegistry`, `nucleus-dev`, and the CLI stubs other than `login` and `logout`.
+- Unused config: CoreML feature names, personalization, chat-history and tool-state paths, and the Qdrant gRPC storage mode.
+
 ### Fixed
 - Remove the CoreML example and switch the `with_provider` doctest off `ProviderType::CoreML`; that variant is macOS-only, so both broke the Linux CI build.
 - Build on Rust 1.99: update `ethnum` (pulled in by LanceDB) from 1.5.2 to 1.5.3. 1.5.2 transmutes a standard-library error type that changed size.

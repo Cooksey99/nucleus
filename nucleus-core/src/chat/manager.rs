@@ -756,7 +756,7 @@ impl ChatManagerBuilder {
 
     /// Override the provider type.
     ///
-    /// This allows you to specify which LLM provider to use (Ollama, MistralRs, or Grok).
+    /// This allows you to specify which LLM provider to use (MistralRs or Grok).
     /// The provider will be constructed automatically using the config and registry.
     ///
     /// # Arguments

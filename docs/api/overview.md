@@ -21,12 +21,6 @@ Pre-built plugins in `nucleus-std`:
 - `SearchPlugin` - Semantic codebase search
 - `ExecPlugin` - Execute shell commands
 
-### Developer Plugins
-
-Advanced integrations in `nucleus-dev`:
-- `GitPlugin` - Git operations
-- `LspPlugin` - Language server integration
-
 ## Basic Usage Pattern
 
 ```rust
@@ -82,7 +76,6 @@ nucleus/
 │   ├── Config          # Configuration system
 │   ├── RagEngine       # Knowledge base / RAG with batch operations
 │   ├── Indexer         # Text chunking and file collection
-│   ├── ModelRegistry   # Catalog of LLM and embedding models
 │   └── Provider        # LLM backend abstraction
 │
 ├── nucleus-plugin/     # Plugin system foundation
@@ -95,10 +88,6 @@ nucleus/
 │   ├── WriteFilePlugin
 │   ├── SearchPlugin
 │   └── ExecPlugin
-│
-└── nucleus-dev/        # Developer-focused plugins
-    ├── GitPlugin
-    └── LspPlugin
 ```
 
 ## Next Steps

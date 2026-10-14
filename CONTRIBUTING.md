@@ -50,8 +50,7 @@ Nucleus is a Cargo workspace with these crates:
 - **nucleus-core**: LLM orchestration and chat management
 - **nucleus-plugin**: Plugin system trait and registry
 - **nucleus-std**: Standard plugins (file I/O, search, exec)
-- **nucleus-dev**: Developer-specific plugins (git, LSP)
-- **nucleus-cli**: CLI tool (separate from library)
+- **nucleus-cli**: `login` and `logout` for a Grok account
 - **nucleus**: Main crate tying everything together
 
 ## Code Guidelines
@@ -79,7 +78,7 @@ Nucleus is a Cargo workspace with these crates:
 ### Areas We Need Help With
 
 - **Plugin Development**: New tools for the plugin system
-- **Backend Support**: We're currently focused on deep integration with mistralrs as the primary embedded backend. Before adding alternative backends, we should ensure mistral.rs and Ollama are stable.
+- **Backend Support**: Local inference is mistral.rs. Hosted providers are added behind the same provider trait.
 - **Documentation**: Tutorials, guides, and API docs
 - **Testing**: Improve test coverage
 - **Examples**: Real-world usage examples
@@ -102,7 +101,7 @@ If you're building a plugin:
 2. Handle permissions appropriately
 3. Write comprehensive tests
 4. Document expected behavior and limitations
-5. Consider contributing to `nucleus-std` or `nucleus-dev` if generally useful
+5. Consider contributing to `nucleus-std` if generally useful
 
 Example plugin structure:
 

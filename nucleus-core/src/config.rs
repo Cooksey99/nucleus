@@ -25,7 +25,6 @@ pub struct Config {
     pub llm: LlmConfig,
     pub rag: Option<RagConfig>,
     pub storage: StorageConfig,
-    pub personalization: PersonalizationConfig,
 
     #[serde(skip)]
     pub permission: Permission,
@@ -58,19 +57,13 @@ impl Default for Permission {
 /// Configuration for the AI model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
-    /// Provider type: "mistralrs", or "coreml"
+    /// Provider type: "mistralrs" or "grok"
     #[serde(default = "default_provider")]
     pub provider: String,
     pub model: String,
     pub base_url: String,
     pub temperature: f64,
     pub context_length: usize,
-    /// CoreML-specific: input feature name
-    #[serde(default = "default_input_name")]
-    pub coreml_input_name: String,
-    /// CoreML-specific: output feature name
-    #[serde(default = "default_output_name")]
-    pub coreml_output_name: String,
     // API key for bearer token for hosted providers
     #[serde(default)]
     pub api_key: Option<String>,
@@ -78,14 +71,6 @@ pub struct LlmConfig {
 
 fn default_provider() -> String {
     "mistralrs".to_string()
-}
-
-fn default_input_name() -> String {
-    "input".to_string()
-}
-
-fn default_output_name() -> String {
-    "output".to_string()
 }
 
 /// Configuration for RAG processing.
@@ -141,10 +126,8 @@ impl Default for IndexerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "lowercase")]
 pub enum StorageMode {
-    /// Embedded storage - runs in-process with zero setup (default)
+    /// Embedded LanceDB storage. Runs in-process.
     Embedded { path: String },
-    /// gRPC storage - connect to external vector database server
-    Grpc { url: String },
 }
 
 impl Default for StorageMode {
@@ -173,13 +156,9 @@ impl Default for RagConfig {
     }
 }
 
-/// Storage configuration for all persistence.
-///
-/// This includes chat history, tool state, and vector database storage.
+/// Storage configuration for vector search.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConfig {
-    pub chat_history_path: String,
-    pub tool_state_path: String,
     /// Vector database storage mode
     #[serde(default)]
     pub storage_mode: StorageMode,
@@ -193,28 +172,11 @@ pub struct StorageConfig {
 
 /// Vector database configuration (collection/index name, etc.).
 ///
-/// Provider-agnostic configuration that works with any vector DB backend
-/// (Qdrant, LanceDB, etc.).
+/// LanceDB table name and related settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VectorDbConfig {
     /// Collection/index name for storing vectors
     pub collection_name: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PersonalizationConfig {
-    pub learn_from_interactions: bool,
-    pub save_conversations: bool,
-    pub user_preferences_path: String,
-}
-impl Default for PersonalizationConfig {
-    fn default() -> Self {
-        Self {
-            learn_from_interactions: true,
-            save_conversations: true,
-            user_preferences_path: "./data/preferences.json".to_string(),
-        }
-    }
 }
 
 impl Default for VectorDbConfig {
@@ -228,8 +190,6 @@ impl Default for VectorDbConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            chat_history_path: "./data/history".to_string(),
-            tool_state_path: "./data/tool_state".to_string(),
             storage_mode: StorageMode::default(),
             vector_db: VectorDbConfig::default(),
             top_k: default_top_k(),
@@ -245,8 +205,6 @@ impl Default for LlmConfig {
             base_url: "http://localhost:11434".to_string(),
             temperature: 0.6,
             context_length: 32768,
-            coreml_input_name: default_input_name(),
-            coreml_output_name: default_output_name(),
             api_key: None,
         }
     }
@@ -261,7 +219,6 @@ impl Default for Config {
                     .to_string(),
             rag: None,
             storage: StorageConfig::default(),
-            personalization: PersonalizationConfig::default(),
             permission: Permission::default(),
         }
     }
@@ -345,15 +302,6 @@ impl Config {
         self
     }
 
-    /// Configure personalization settings.
-    pub fn with_personalization_config(
-        mut self,
-        personalization_config: PersonalizationConfig,
-    ) -> Self {
-        self.personalization = personalization_config;
-        self
-    }
-
     /// Set API key for hosted LLM
     pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
         self.llm.api_key = Some(key.into());
@@ -382,8 +330,6 @@ mod tests {
     #[test]
     fn test_storage_config_defaults() {
         let config = StorageConfig::default();
-        assert_eq!(config.chat_history_path, "./data/history");
-        assert_eq!(config.tool_state_path, "./data/tool_state");
         assert_eq!(config.vector_db.collection_name, "nucleus_kb");
         assert_eq!(config.top_k, 5);
     }

@@ -15,8 +15,6 @@
 //! # Features
 //!
 //! - `std` (default): Include standard library plugins
-//! - `dev`: Include developer tooling plugins
-//! - `full`: Include all plugins
 
 // Re-export core
 pub use nucleus_core::*;
@@ -26,10 +24,6 @@ pub use nucleus_plugin;
 #[cfg(feature = "std")]
 pub use nucleus_std;
 
-// Re-export dev plugins if feature is enabled
-#[cfg(feature = "dev")]
-pub use nucleus_dev;
-
 /// Prelude module for convenient imports
 pub mod prelude {
     pub use nucleus_core::*;
@@ -37,7 +31,4 @@ pub mod prelude {
 
     #[cfg(feature = "std")]
     pub use nucleus_std;
-
-    #[cfg(feature = "dev")]
-    pub use nucleus_dev;
 }
