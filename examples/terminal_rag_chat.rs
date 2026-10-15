@@ -1,7 +1,7 @@
 // The initial indexing in this example can take a few minutes
 
 use nucleus::{ChatManagerBuilder, CommandEffect, Config};
-use nucleus::{Permission, PluginRegistry};
+use nucleus::{PluginRegistry};
 
 #[tokio::main]
 async fn main() {
@@ -15,7 +15,7 @@ async fn main() {
         .init();
 
     let config = Config::load_or_default();
-    let registry = PluginRegistry::new(Permission::READ_ONLY);
+    let registry = PluginRegistry::new();
 
     let manager = ChatManagerBuilder::new()
         .with_config(config)

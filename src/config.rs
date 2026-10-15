@@ -25,33 +25,6 @@ pub struct Config {
     pub llm: LlmConfig,
     pub rag: Option<RagConfig>,
     pub storage: StorageConfig,
-
-    #[serde(skip)]
-    pub permission: Permission,
-}
-
-/// Permissions granted to the AI.
-///
-/// **Note**: A permission granted here does not mean it will automatically perform the actions.
-/// However, if false, the functionality will not exist to begin with.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Permission {
-    /// Read directories and files
-    pub read: bool,
-    /// Write to files
-    pub write: bool,
-    /// Run system commands
-    pub command: bool,
-}
-
-impl Default for Permission {
-    fn default() -> Self {
-        Self {
-            read: true,
-            write: true,
-            command: true,
-        }
-    }
 }
 
 /// Configuration for the AI model
@@ -219,7 +192,6 @@ impl Default for Config {
                     .to_string(),
             rag: None,
             storage: StorageConfig::default(),
-            permission: Permission::default(),
         }
     }
 }
@@ -228,9 +200,7 @@ impl Config {
     /// Load configuration from a YAML file.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let contents = fs::read_to_string(path)?;
-        let mut config: Config = serde_yaml::from_str(&contents)?;
-
-        config.permission = Permission::default();
+        let config: Config = serde_yaml::from_str(&contents)?;
 
         Ok(config)
     }
@@ -312,14 +282,6 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_permission_default() {
-        let perm = Permission::default();
-        assert!(perm.read);
-        assert!(perm.write);
-        assert!(perm.command);
-    }
 
     #[test]
     fn test_vector_db_config_default() {

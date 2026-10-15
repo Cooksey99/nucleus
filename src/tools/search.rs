@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use crate::patterns;
-use crate::tool::{Permission, Plugin, PluginError, PluginOutput, Result};
+use crate::tool::{Plugin, PluginError, PluginOutput, Result};
 use regex::Regex;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
@@ -57,10 +57,6 @@ impl Plugin for SearchPlugin {
     fn parameter_schema(&self) -> Value {
         let schema = schema_for!(SearchParams);
         serde_json::to_value(schema).unwrap()
-    }
-
-    fn required_permission(&self) -> Permission {
-        Permission::READ_ONLY
     }
 
     async fn execute(&self, input: Value) -> Result<PluginOutput> {

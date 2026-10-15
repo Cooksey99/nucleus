@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::tool::{Permission, Plugin, PluginError, PluginOutput, Result};
+use crate::tool::{Plugin, PluginError, PluginOutput, Result};
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;
@@ -54,10 +54,6 @@ impl Plugin for ExecPlugin {
     fn parameter_schema(&self) -> Value {
         let schema = schema_for!(ExecParams);
         serde_json::to_value(schema).unwrap_or_default()
-    }
-
-    fn required_permission(&self) -> Permission {
-        Permission::ALL
     }
 
     async fn execute(&self, input: Value) -> Result<PluginOutput> {

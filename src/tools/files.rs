@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::tool::{Permission, Plugin, PluginError, PluginOutput, Result};
+use crate::tool::{Plugin, PluginError, PluginOutput, Result};
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;
@@ -58,10 +58,6 @@ impl Plugin for ReadFilePlugin {
         serde_json::to_value(schema).unwrap_or_default()
     }
 
-    fn required_permission(&self) -> Permission {
-        Permission::READ_ONLY
-    }
-
     async fn execute(&self, input: Value) -> Result<PluginOutput> {
         let params: ReadFileParams = serde_json::from_value(input)
             .map_err(|e| PluginError::InvalidInput(format!("Invalid parameters: {}", e)))?;
@@ -93,10 +89,6 @@ impl Plugin for WriteFilePlugin {
     fn parameter_schema(&self) -> Value {
         let schema = schema_for!(WriteFileParams);
         serde_json::to_value(schema).unwrap_or_default()
-    }
-
-    fn required_permission(&self) -> Permission {
-        Permission::READ_WRITE
     }
 
     async fn execute(&self, input: Value) -> Result<PluginOutput> {

@@ -11,55 +11,11 @@ pub enum PluginError {
     #[error("Execution failed: {0}")]
     ExecutionFailed(String),
 
-    #[error("Permission denied: {0}")]
-    PermissionDenied(String),
-
     #[error("Plugin error: {0}")]
     Other(String),
 }
 
 pub type Result<T> = std::result::Result<T, PluginError>;
-
-/// Permissions required by a plugin.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Permission {
-    pub read: bool,
-    pub write: bool,
-    pub execute: bool,
-}
-
-impl Permission {
-    pub const READ_ONLY: Self = Self {
-        read: true,
-        write: false,
-        execute: false,
-    };
-
-    pub const READ_WRITE: Self = Self {
-        read: true,
-        write: true,
-        execute: false,
-    };
-
-    pub const ALL: Self = Self {
-        read: true,
-        write: true,
-        execute: true,
-    };
-
-    pub const NONE: Self = Self {
-        read: false,
-        write: false,
-        execute: false,
-    };
-
-    /// Check if this permission allows the required permission.
-    pub fn allows(&self, required: &Permission) -> bool {
-        (!required.read || self.read)
-            && (!required.write || self.write)
-            && (!required.execute || self.execute)
-    }
-}
 
 /// Output from plugin execution.
 #[derive(Debug, Clone)]
@@ -91,7 +47,7 @@ impl fmt::Display for PluginOutput {
 /// Core trait that all plugins must implement.
 ///
 /// Plugins extend nucleus with custom capabilities. From the LLM's perspective,
-/// plugins appear as "tools" that can be called during conversation.
+/// plugins appear as tools that can be called during conversation.
 #[async_trait]
 pub trait Plugin: Send + Sync {
     /// Unique identifier for this plugin.
@@ -106,13 +62,7 @@ pub trait Plugin: Send + Sync {
     /// This tells the LLM what arguments the plugin expects.
     fn parameter_schema(&self) -> Value;
 
-    /// Permissions required to execute this plugin.
-    /// Used to enforce security boundaries.
-    fn required_permission(&self) -> Permission;
-
     /// Execute the plugin with given input parameters.
     /// The input should match the parameter schema.
-    ///
-    /// **This is the actual function the LLM will use to call a tool**
     async fn execute(&self, input: Value) -> Result<PluginOutput>;
 }

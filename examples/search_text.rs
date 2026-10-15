@@ -1,18 +1,14 @@
-use nucleus::{Permission, PluginRegistry};
+use nucleus::{PluginRegistry};
 use nucleus::SearchPlugin;
 
 #[tokio::main]
 async fn main() {
     println!("Nucleus - SearchPlugin\n");
 
-    let mut registry = PluginRegistry::new(Permission::READ_ONLY);
+    let mut registry = PluginRegistry::new();
 
-    if registry.register(SearchPlugin::new()).await {
-        println!("SearchPlugin registered\n");
-    } else {
-        eprintln!("Failed to register plugin (permission denied)");
-        return;
-    }
+    registry.register(SearchPlugin::new());
+    println!("SearchPlugin registered\n");
 
     // Test 1: Basic text search in current directory
     println!("Test 1: Search for 'tokio' in current directory");
@@ -87,6 +83,6 @@ async fn main() {
 
     // Test 5: Show plugin specs (for LLM)
     println!("Test 5: Plugin specifications for LLM");
-    let specs = registry.plugin_specs().await;
+    let specs = registry.plugin_specs();
     println!("{}", serde_json::to_string_pretty(&specs).unwrap());
 }

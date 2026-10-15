@@ -4,7 +4,7 @@
 
 use nucleus::ChatManagerBuilder;
 use nucleus::Config;
-use nucleus::{Permission, PluginRegistry};
+use nucleus::{PluginRegistry};
 use nucleus::WriteFilePlugin;
 
 #[tokio::main]
@@ -21,8 +21,8 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::load_or_default();
 
-    let mut registry = PluginRegistry::new(Permission::READ_WRITE);
-    registry.register(WriteFilePlugin::new()).await;
+    let mut registry = PluginRegistry::new();
+    registry.register(WriteFilePlugin::new());
 
     // Use the local Q4_K_M GGUF from Ollama's blob storage
     let manager = ChatManagerBuilder::new()

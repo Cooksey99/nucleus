@@ -9,7 +9,7 @@ A privacy-first, modular AI engine for building customizable developer tooling. 
 Nucleus is a **library**, not an application. It provides the building blocks for creating AI-powered developer tools:
 
 - **Tool-Augmented LLM**: Execute real actions (read files, search code, run commands) instead of just text generation
-- **Plugin System**: Extensible tools with permission controls
+- **Plugin System**: Extensible tools the model can call
 - **Local-First**: Works with a local mistral.rs model - no data leaves your machine
 - **Modular Architecture**: Use only what you need
 
@@ -18,7 +18,7 @@ Nucleus is a **library**, not an application. It provides the building blocks fo
 Here's a minimal example that lets an AI read and analyze files:
 
 ```rust
-use nucleus::{ChatManager, Config, Permission, PluginRegistry, ReadFilePlugin};
+use nucleus::{ChatManager, Config, PluginRegistry, ReadFilePlugin};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load_or_default();
     
     // Register plugins the AI can use
-    let mut registry = PluginRegistry::new(Permission::READ_ONLY);
+    let mut registry = PluginRegistry::new();
     registry.register(ReadFilePlugin::new());
     
     let manager = ChatManager::new(config, registry).await;

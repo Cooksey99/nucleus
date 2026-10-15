@@ -1,4 +1,4 @@
-use nucleus::{Permission, PluginRegistry};
+use nucleus::{PluginRegistry};
 use nucleus::ReadFilePlugin;
 use std::path::Path;
 
@@ -7,16 +7,12 @@ async fn main() {
     println!("Nucleus - ReadFilePlugin\n");
 
     // Create plugin registry with read permissions
-    let mut registry = PluginRegistry::new(Permission::READ_ONLY);
+    let mut registry = PluginRegistry::new();
 
     // Register the ReadFilePlugin
     let read_plugin = ReadFilePlugin::new();
-    if registry.register(ReadFilePlugin::new()).await {
-        println!("ReadFilePlugin registered\n");
-    } else {
-        eprintln!("Failed to register plugin (permission denied)");
-        return;
-    }
+    registry.register(ReadFilePlugin::new());
+    println!("ReadFilePlugin registered\n");
     let path = "Cargo.toml";
 
     // Test 1: Read the Cargo.toml file
@@ -68,6 +64,6 @@ async fn main() {
 
     // Test 3: Show plugin specs (for LLM)
     println!("Test 3: Plugin specifications for LLM");
-    let specs = registry.plugin_specs().await;
+    let specs = registry.plugin_specs();
     println!("{}", serde_json::to_string_pretty(&specs).unwrap());
 }

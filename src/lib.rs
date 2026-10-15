@@ -28,7 +28,7 @@ pub use provider::{
     ProviderError, Tool, ToolCall, ToolCallFunction, ToolFunction,
 };
 pub use rag::RagEngine;
-pub use tool::{Permission, Plugin, PluginError, PluginOutput, PluginRegistry};
+pub use tool::{Plugin, PluginError, PluginOutput, PluginRegistry};
 
 #[cfg(feature = "std")]
 pub use tools::{ExecPlugin, ReadFilePlugin, SearchPlugin, WriteFilePlugin};
@@ -36,7 +36,7 @@ pub use tools::{ExecPlugin, ReadFilePlugin, SearchPlugin, WriteFilePlugin};
 /// Convenient imports.
 pub mod prelude {
     pub use crate::{
-        ChatManager, ChatManagerBuilder, Config, Permission, Plugin, PluginRegistry, Provider,
+        ChatManager, ChatManagerBuilder, Config, Plugin, PluginRegistry, Provider,
     };
 
     #[cfg(feature = "std")]

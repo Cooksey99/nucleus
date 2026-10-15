@@ -35,8 +35,7 @@ use crate::provider::{
 };
 use crate::rag::RagEngine;
 use anyhow::{Context, Result};
-use futures::future::join_all;
-use crate::tool::{Permission, PluginRegistry};
+use crate::tool::PluginRegistry;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -52,11 +51,11 @@ use tracing::{debug, info};
 ///
 /// ```no_run
 /// use nucleus::{ChatManager, Config};
-/// use nucleus::{PluginRegistry, Permission};
+/// use nucleus::{PluginRegistry};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// let config = Config::load_or_default();
-/// let registry = PluginRegistry::new(Permission::READ_ONLY);
+/// let registry = PluginRegistry::new();
 /// let manager = ChatManager::new(config, registry).await?;
 ///
 /// let response = manager.query("What files are in the current directory?").await?;
@@ -111,11 +110,11 @@ impl ChatManager {
     ///
     /// ```no_run
     /// use nucleus::{ChatManager, Config};
-    /// use nucleus::{PluginRegistry, Permission};
+    /// use nucleus::{PluginRegistry};
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
-    /// let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let registry = PluginRegistry::new();
     /// let manager = ChatManager::new(config, registry).await?;
     /// # Ok(())
     /// # }
@@ -141,14 +140,14 @@ impl ChatManager {
     /// ```no_run
     /// use nucleus::{ChatManager, Config};
     /// use nucleus::provider::MistralRsProvider;
-    /// use nucleus::{PluginRegistry, Permission};
+    /// use nucleus::{PluginRegistry};
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
-    /// let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let registry = PluginRegistry::new();
     ///
-    /// let provider = MistralRsProvider::new(&config, Arc::new(PluginRegistry::new(Permission::NONE))).await?;
+    /// let provider = MistralRsProvider::new(&config, Arc::new(PluginRegistry::new())).await?;
     /// let manager = ChatManager::new(config, registry).await?
     ///     .with_provider(Arc::new(provider)).await?;
     /// # Ok(())
@@ -166,11 +165,11 @@ impl ChatManager {
     ///
     /// ```no_run
     /// # use nucleus::{ChatManager, Config, Provider, RagEngine};
-    /// # use nucleus::{PluginRegistry, Permission};
+    /// # use nucleus::{PluginRegistry};
     /// # use std::sync::Arc;
     /// # async fn example(provider: Arc<dyn Provider>) -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
-    /// let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// let registry = PluginRegistry::new();
     ///
     /// let custom_rag = RagEngine::new(&config, provider).await?;
     /// let manager = ChatManager::new(config, registry).await?
@@ -189,10 +188,10 @@ impl ChatManager {
     ///
     /// ```no_run
     /// # use nucleus::{ChatManager, Config};
-    /// # use nucleus::{PluginRegistry, Permission};
+    /// # use nucleus::{PluginRegistry};
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
-    /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// # let registry = PluginRegistry::new();
     /// let manager = ChatManager::new(config, registry).await?;
     /// let count = manager.knowledge_base_count().await;
     /// println!("{count} documents in the knowledge base");
@@ -329,7 +328,7 @@ impl ChatManager {
     /// # use std::sync::Arc;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
-    /// # let registry = Arc::new(PluginRegistry::new(nucleus::Permission::READ_ONLY));
+    /// # let registry = Arc::new(PluginRegistry::new());
     /// # let manager = ChatManager::new(config, registry).await?;
     /// let response = manager.query("Summarize the README file").await?;
     /// let follow_up = manager.query("What does the license section say?").await?;
@@ -356,7 +355,7 @@ impl ChatManager {
     /// # use std::io::{self, Write};
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
-    /// # let registry = Arc::new(PluginRegistry::new(nucleus::Permission::READ_ONLY));
+    /// # let registry = Arc::new(PluginRegistry::new());
     /// # let manager = ChatManager::new(config, registry).await?;
     /// let response = manager.query_stream("Tell me a story", |chunk| {
     ///     print!("{}", chunk);
@@ -405,20 +404,19 @@ impl ChatManager {
     ///
     /// This method is called once at the start of each query. Tools are
     /// included in every LLM request throughout the conversation loop.
-    async fn build_tools(&self) -> Vec<Tool> {
-        join_all(self.registry.all().iter().map(async move |plugin| {
-            let plugin = plugin.lock().await;
-            let spec = plugin.parameter_schema();
-            Tool {
+    fn build_tools(&self) -> Vec<Tool> {
+        self.registry
+            .all()
+            .into_iter()
+            .map(|plugin| Tool {
                 tool_type: "function".to_string(),
                 function: ToolFunction {
                     name: plugin.name().to_string(),
                     description: plugin.description().to_string(),
-                    parameters: spec,
+                    parameters: plugin.parameter_schema(),
                 },
-            }
-        }))
-        .await
+            })
+            .collect()
     }
 
     /// Run one user turn, appending user, tool, and assistant messages to `messages`.
@@ -459,7 +457,7 @@ impl ChatManager {
         let context = self.retrieve_context(user_message).await;
         messages.push(Self::user_message(&context, user_message));
 
-        let tools = self.build_tools().await;
+        let tools = self.build_tools();
 
         loop {
             let mut request = ChatRequest::new(&self.config.llm.model, messages.clone())
@@ -628,20 +626,20 @@ impl ChatManager {
 ///
 /// ```no_run
 /// use nucleus::{models::EmbeddingModel, ChatManagerBuilder, Config};
-/// use nucleus::{PluginRegistry, Permission};
+/// use nucleus::{PluginRegistry};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// // Use defaults from config
 /// let manager = ChatManagerBuilder::new()
 ///     .with_config(Config::load_or_default())
-///     .with_registry(PluginRegistry::new(Permission::READ_ONLY))
+///     .with_registry(PluginRegistry::new())
 ///     .build()
 ///     .await?;
 ///
 /// // Override the LLM and embedding models
 /// let manager = ChatManagerBuilder::new()
 ///     .with_config(Config::load_or_default())
-///     .with_registry(PluginRegistry::new(Permission::READ_ONLY))
+///     .with_registry(PluginRegistry::new())
 ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
 ///     .with_embedding_model(EmbeddingModel::default())
 ///     .build()
@@ -662,7 +660,7 @@ impl ChatManagerBuilder {
     /// Creates a new builder with the given config and registry.
     pub fn new() -> Self {
         let config = Config::default();
-        let registry = Arc::new(PluginRegistry::new(Permission::NONE));
+        let registry = Arc::new(PluginRegistry::new());
         Self {
             config,
             registry,
@@ -768,10 +766,10 @@ impl ChatManagerBuilder {
     /// ```no_run
     /// # use nucleus::{ChatManagerBuilder, Config};
     /// # use nucleus::provider::ProviderType;
-    /// # use nucleus::{PluginRegistry, Permission};
+    /// # use nucleus::{PluginRegistry};
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
-    /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
+    /// # let registry = PluginRegistry::new();
     /// let manager = ChatManagerBuilder::new()
     ///     .with_config(config)
     ///     .with_registry(registry)

@@ -1,12 +1,12 @@
 use nucleus::{ChatManagerBuilder, Config};
-use nucleus::{Permission, PluginRegistry};
+use nucleus::{PluginRegistry};
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load configuration
     let config = Config::load_or_default();
-    let registry = PluginRegistry::new(Permission::NONE);
+    let registry = PluginRegistry::new();
 
     // Create chat manager using builder pattern
     let mut chat_manager = ChatManagerBuilder::new()

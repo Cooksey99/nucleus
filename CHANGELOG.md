@@ -14,6 +14,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Merge `nucleus-core`, `nucleus-plugin`, and `nucleus-std` into the `nucleus` crate. Built-in tools stay behind the `std` feature.
 
 ### Removed
+- The plugin `Permission` system. Registration is synchronous and always succeeds. An approval hook comes later.
 - CoreML (archived on `archive/coreml`), the IPC server, Ollama, Qdrant, `ModelRegistry`, `nucleus-dev`, and the CLI stubs other than `login` and `logout`.
 - Unused config: CoreML feature names, personalization, chat-history and tool-state paths, and the Qdrant gRPC storage mode.
 

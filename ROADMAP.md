@@ -166,7 +166,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 ### Phase 1: Delete and consolidate
 - [x] Remove everything in the "Remove:" decision above, plus leftovers from the earlier project (Go entries in `.gitignore`, `llm-workspace` socket)
 - [x] Merge the crates into `nucleus`: `provider`, `chat`, `tool`, `rag`, `tools`. `agent` replaces `chat` in Phase 2. `mcp` arrives in Phase 5.
-- [ ] Remove `Permission`. Tools become `Arc<dyn Tool>` with no `Mutex`, and registration is synchronous
+- [x] Remove `Permission`. Plugins are stored as `Arc<dyn Plugin>` with no `Mutex`, and registration is synchronous. Renaming `Plugin` to `Tool` waits, because `provider::Tool` is already the LLM tool spec.
 - [ ] Feature flags: `hosted` (default), `local`, `rag`, `lancedb`, `mcp`, `experimental`, `metal`, `cuda`
 - [ ] Set the minimum supported Rust version (1.88 or later) and the edition (2021 or 2024)
 - [ ] Move to reqwest 0.13

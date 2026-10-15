@@ -7,7 +7,7 @@
 //! 4. AI analyzes and responds
 
 use nucleus::{ChatManager, Config};
-use nucleus::{Permission, PluginRegistry};
+use nucleus::{PluginRegistry};
 use nucleus::ReadFilePlugin;
 
 #[tokio::main]
@@ -26,8 +26,8 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::load_or_default();
 
-    let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-    registry.register(ReadFilePlugin::new()).await;
+    let mut registry = PluginRegistry::new();
+    registry.register(ReadFilePlugin::new());
 
     let manager = ChatManager::new(config, registry).await?;
 

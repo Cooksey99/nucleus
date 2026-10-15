@@ -15,7 +15,6 @@ use mistralrs::{
 use crate::tool::PluginRegistry;
 use tracing::{debug, info, warn};
 
-use futures::future::join_all;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -52,10 +51,10 @@ impl MistralRsProvider {
     ///
     /// ```no_run
     /// # use nucleus::{provider::MistralRsProvider, Config};
-    /// # use nucleus::{Permission, PluginRegistry};
+    /// # use nucleus::{PluginRegistry};
     /// # use std::sync::Arc;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
+    /// let registry = Arc::new(PluginRegistry::new());
     /// let mut config = Config::load_or_default();
     ///
     /// // Pre-quantized GGUF from HuggingFace (recommended, fastest)
@@ -249,9 +248,9 @@ impl Provider for MistralRsProvider {
                 "Converting plugins to mistral.rs tools"
             );
 
-            let mistral_tools: Vec<MistralTool> =
-                join_all(plugins.iter().map(async move |plugin| {
-                    let plugin = plugin.lock().await;
+            let mistral_tools: Vec<MistralTool> = plugins
+                .into_iter()
+                .map(|plugin| {
                     let schema = plugin.parameter_schema();
                     debug!(
                         tool_name = %plugin.name(),
@@ -288,8 +287,8 @@ impl Provider for MistralRsProvider {
                             parameters,
                         },
                     }
-                }))
-                .await;
+                })
+                .collect();
 
             info!(
                 tool_count = mistral_tools.len(),

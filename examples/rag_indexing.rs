@@ -4,7 +4,7 @@
 
 use nucleus::config::StorageMode;
 use nucleus::{ChatManager, Config};
-use nucleus::{Permission, PluginRegistry};
+use nucleus::{PluginRegistry};
 
 const VECTOR_DB_PATH: &str = "./data/nucleus_vectordb_rag_indexing";
 const COLLECTION_NAME: &str = "nucleus_kb_rag_indexing_example";
@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let _ = std::fs::remove_dir_all(VECTOR_DB_PATH);
     std::fs::create_dir_all(VECTOR_DB_PATH)?;
 
-    let manager = ChatManager::new(config, PluginRegistry::new(Permission::READ_WRITE)).await?;
+    let manager = ChatManager::new(config, PluginRegistry::new()).await?;
     println!("RAG enabled: {}", manager.is_rag_enabled());
 
     manager.clear_knowledge_base().await?;

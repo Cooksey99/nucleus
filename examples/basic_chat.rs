@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use nucleus::{ChatManager, CommandEffect, Config};
-use nucleus::{Permission, PluginRegistry};
+use nucleus::{PluginRegistry};
 
 #[tokio::main]
 async fn main() {
@@ -13,7 +13,7 @@ async fn main() {
         .init();
 
     let config = Config::load_or_default();
-    let registry = PluginRegistry::new(Permission::NONE);
+    let registry = PluginRegistry::new();
     let manager = ChatManager::new(config, registry)
         .await
         .expect("Failed to create chat manager");
