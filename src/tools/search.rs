@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use nucleus_core::patterns;
-use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
+use crate::patterns;
+use crate::tool::{Permission, Plugin, PluginError, PluginOutput, Result};
 use regex::Regex;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
@@ -142,5 +142,5 @@ impl Plugin for SearchPlugin {
 }
 
 fn should_skip(path: &std::path::Path, exclude_patterns: &[String]) -> bool {
-    nucleus_core::patterns::should_exclude(path, exclude_patterns)
+    crate::patterns::should_exclude(path, exclude_patterns)
 }

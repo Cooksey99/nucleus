@@ -5667,40 +5667,17 @@ name = "nucleus"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "dirs",
- "nucleus-core",
- "nucleus-plugin",
- "nucleus-std",
- "schemars 1.2.0",
- "serde_json",
- "tokio",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "nucleus-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "nucleus-core",
- "tokio",
-]
-
-[[package]]
-name = "nucleus-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
  "arrow-array",
  "arrow-schema",
  "async-trait",
+ "dirs",
  "flate2",
  "futures",
  "lancedb",
  "mistralrs",
- "nucleus-plugin",
+ "regex",
  "reqwest 0.12.24",
+ "schemars 1.2.0",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -5711,33 +5688,17 @@ dependencies = [
  "tokenizers 0.22.2",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "nucleus-plugin"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
-name = "nucleus-std"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "nucleus-core",
- "nucleus-plugin",
- "regex",
- "schemars 1.2.0",
- "serde",
- "serde_json",
- "tokio",
+ "tracing-subscriber",
  "walkdir",
+]
+
+[[package]]
+name = "nucleus-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "nucleus",
+ "tokio",
 ]
 
 [[package]]

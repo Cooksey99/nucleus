@@ -3,9 +3,9 @@
 //! Demonstrates how the LLM can write files using the plugin system.
 
 use nucleus::ChatManagerBuilder;
-use nucleus_core::Config;
-use nucleus_plugin::{Permission, PluginRegistry};
-use nucleus_std::WriteFilePlugin;
+use nucleus::Config;
+use nucleus::{Permission, PluginRegistry};
+use nucleus::WriteFilePlugin;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("nucleus_core=debug".parse().unwrap())
+                .add_directive("nucleus=debug".parse().unwrap())
                 .add_directive("mistralrs_core=debug".parse().unwrap()),
         )
         .init();

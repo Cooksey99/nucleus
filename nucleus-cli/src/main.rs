@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use nucleus_core::{grok_login, grok_logout};
+use nucleus::{grok_login, grok_logout};
 use std::error::Error;
 
 #[derive(Debug, Parser)]

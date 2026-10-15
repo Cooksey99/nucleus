@@ -165,7 +165,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 
 ### Phase 1: Delete and consolidate
 - [x] Remove everything in the "Remove:" decision above, plus leftovers from the earlier project (Go entries in `.gitignore`, `llm-workspace` socket)
-- [ ] Merge the crates into `nucleus`: `provider`, `agent`, `tool`, `rag`, `mcp`, `tools`
+- [x] Merge the crates into `nucleus`: `provider`, `chat`, `tool`, `rag`, `tools`. `agent` replaces `chat` in Phase 2. `mcp` arrives in Phase 5.
 - [ ] Remove `Permission`. Tools become `Arc<dyn Tool>` with no `Mutex`, and registration is synchronous
 - [ ] Feature flags: `hosted` (default), `local`, `rag`, `lancedb`, `mcp`, `experimental`, `metal`, `cuda`
 - [ ] Set the minimum supported Rust version (1.88 or later) and the edition (2021 or 2024)

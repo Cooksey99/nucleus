@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use nucleus_plugin::{Permission, Plugin, PluginError, PluginOutput, Result};
+use crate::tool::{Permission, Plugin, PluginError, PluginOutput, Result};
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;

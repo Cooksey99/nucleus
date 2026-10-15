@@ -18,9 +18,7 @@ Nucleus is a **library**, not an application. It provides the building blocks fo
 Here's a minimal example that lets an AI read and analyze files:
 
 ```rust
-use nucleus_core::{ChatManager, Config};
-use nucleus_plugin::{PluginRegistry, Permission};
-use nucleus_std::ReadFilePlugin;
+use nucleus::{ChatManager, Config, Permission, PluginRegistry, ReadFilePlugin};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -68,11 +66,8 @@ cargo run --example write_file
 
 Nucleus is structured as a workspace with clear separation:
 
-- **nucleus-core**: LLM orchestration, chat management, configuration
-- **nucleus-plugin**: Plugin trait and registry system
-- **nucleus-std**: Standard plugins (file I/O, search, exec)
+- **nucleus**: the library. Chat, providers, retrieval, and built-in tools live here.
 - **nucleus-cli**: `login` and `logout` for a Grok account
-- **nucleus**: Convenience wrapper with feature flags
 
 ## Installation
 
@@ -87,7 +82,6 @@ For minimal setup without standard plugins:
 ```toml
 [dependencies]
 nucleus = { version = "0.1", default-features = false }
-nucleus-core = "0.1"
 ```
 
 ### Vector Database (for RAG)

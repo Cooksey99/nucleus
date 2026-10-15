@@ -2,33 +2,43 @@
 
 //! nucleus - Privacy-first, modular AI engine
 //!
-//! This is the convenience wrapper crate that re-exports nucleus components
-//! with optional feature flags for easy usage.
-//!
-//! # Quick Start
-//!
-//! ```toml
-//! [dependencies]
-//! nucleus = "0.1"  # Includes core + std plugins by default
-//! ```
+//! Library for local and hosted LLM calls, with tools and retrieval.
 //!
 //! # Features
 //!
-//! - `std` (default): Include standard library plugins
+//! - `std` (default): built-in file, search, and exec tools
+//! - `metal`: Apple Silicon acceleration for mistral.rs
+//! - `cuda`: NVIDIA acceleration for mistral.rs
 
-// Re-export core
-pub use nucleus_core::*;
-pub use nucleus_plugin;
+pub mod chat;
+pub mod config;
+pub mod models;
+pub mod patterns;
+pub mod provider;
+pub mod rag;
+pub mod tool;
 
-// Re-export std plugins if feature is enabled
 #[cfg(feature = "std")]
-pub use nucleus_std;
+pub mod tools;
 
-/// Prelude module for convenient imports
+pub use chat::{ChatManager, ChatManagerBuilder, CommandEffect};
+pub use config::{Config, IndexerConfig};
+pub use provider::{
+    grok_login, grok_logout, ChatRequest, ChatResponse, GrokProvider, Message, Provider,
+    ProviderError, Tool, ToolCall, ToolCallFunction, ToolFunction,
+};
+pub use rag::RagEngine;
+pub use tool::{Permission, Plugin, PluginError, PluginOutput, PluginRegistry};
+
+#[cfg(feature = "std")]
+pub use tools::{ExecPlugin, ReadFilePlugin, SearchPlugin, WriteFilePlugin};
+
+/// Convenient imports.
 pub mod prelude {
-    pub use nucleus_core::*;
-    pub use nucleus_plugin::{Permission, Plugin, PluginRegistry};
+    pub use crate::{
+        ChatManager, ChatManagerBuilder, Config, Permission, Plugin, PluginRegistry, Provider,
+    };
 
     #[cfg(feature = "std")]
-    pub use nucleus_std;
+    pub use crate::{ExecPlugin, ReadFilePlugin, SearchPlugin, WriteFilePlugin};
 }

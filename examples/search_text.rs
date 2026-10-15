@@ -1,5 +1,5 @@
-use nucleus_plugin::{Permission, PluginRegistry};
-use nucleus_std::SearchPlugin;
+use nucleus::{Permission, PluginRegistry};
+use nucleus::SearchPlugin;
 
 #[tokio::main]
 async fn main() {

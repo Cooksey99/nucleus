@@ -3,7 +3,7 @@
 use super::types::*;
 use super::MistralRsProvider;
 use crate::{provider::GrokProvider, Config};
-use nucleus_plugin::PluginRegistry;
+use crate::tool::PluginRegistry;
 use std::sync::Arc;
 use tracing::info;
 

@@ -1,5 +1,5 @@
-use nucleus_plugin::{Permission, PluginRegistry};
-use nucleus_std::ReadFilePlugin;
+use nucleus::{Permission, PluginRegistry};
+use nucleus::ReadFilePlugin;
 use std::path::Path;
 
 #[tokio::main]

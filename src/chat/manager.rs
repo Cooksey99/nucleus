@@ -36,7 +36,7 @@ use crate::provider::{
 use crate::rag::RagEngine;
 use anyhow::{Context, Result};
 use futures::future::join_all;
-use nucleus_plugin::{Permission, PluginRegistry};
+use crate::tool::{Permission, PluginRegistry};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -51,8 +51,8 @@ use tracing::{debug, info};
 /// # Examples
 ///
 /// ```no_run
-/// use nucleus_core::{ChatManager, Config};
-/// use nucleus_plugin::{PluginRegistry, Permission};
+/// use nucleus::{ChatManager, Config};
+/// use nucleus::{PluginRegistry, Permission};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// let config = Config::load_or_default();
@@ -110,8 +110,8 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use nucleus_core::{ChatManager, Config};
-    /// use nucleus_plugin::{PluginRegistry, Permission};
+    /// use nucleus::{ChatManager, Config};
+    /// use nucleus::{PluginRegistry, Permission};
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
@@ -139,9 +139,9 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use nucleus_core::{ChatManager, Config};
-    /// use nucleus_core::provider::MistralRsProvider;
-    /// use nucleus_plugin::{PluginRegistry, Permission};
+    /// use nucleus::{ChatManager, Config};
+    /// use nucleus::provider::MistralRsProvider;
+    /// use nucleus::{PluginRegistry, Permission};
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> anyhow::Result<()> {
@@ -165,8 +165,8 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{ChatManager, Config, Provider, RagEngine};
-    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # use nucleus::{ChatManager, Config, Provider, RagEngine};
+    /// # use nucleus::{PluginRegistry, Permission};
     /// # use std::sync::Arc;
     /// # async fn example(provider: Arc<dyn Provider>) -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
@@ -188,8 +188,8 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # use nucleus::{ChatManager, Config};
+    /// # use nucleus::{PluginRegistry, Permission};
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
     /// # let registry = PluginRegistry::new(Permission::READ_ONLY);
@@ -324,12 +324,12 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_plugin::PluginRegistry;
+    /// # use nucleus::{ChatManager, Config};
+    /// # use nucleus::PluginRegistry;
     /// # use std::sync::Arc;
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
-    /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
+    /// # let registry = Arc::new(PluginRegistry::new(nucleus::Permission::READ_ONLY));
     /// # let manager = ChatManager::new(config, registry).await?;
     /// let response = manager.query("Summarize the README file").await?;
     /// let follow_up = manager.query("What does the license section say?").await?;
@@ -350,13 +350,13 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{ChatManager, Config};
-    /// # use nucleus_plugin::PluginRegistry;
+    /// # use nucleus::{ChatManager, Config};
+    /// # use nucleus::PluginRegistry;
     /// # use std::sync::Arc;
     /// # use std::io::{self, Write};
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
-    /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
+    /// # let registry = Arc::new(PluginRegistry::new(nucleus::Permission::READ_ONLY));
     /// # let manager = ChatManager::new(config, registry).await?;
     /// let response = manager.query_stream("Tell me a story", |chunk| {
     ///     print!("{}", chunk);
@@ -627,8 +627,8 @@ impl ChatManager {
 /// # Examples
 ///
 /// ```no_run
-/// use nucleus_core::{models::EmbeddingModel, ChatManagerBuilder, Config};
-/// use nucleus_plugin::{PluginRegistry, Permission};
+/// use nucleus::{models::EmbeddingModel, ChatManagerBuilder, Config};
+/// use nucleus::{PluginRegistry, Permission};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// // Use defaults from config
@@ -693,7 +693,7 @@ impl ChatManagerBuilder {
     ///
     /// **Hugging Face model**
     /// ```no_run
-    /// # use nucleus_core::ChatManagerBuilder;
+    /// # use nucleus::ChatManagerBuilder;
     /// # async fn example() -> anyhow::Result<()> {
     /// let manager = ChatManagerBuilder::new()
     ///     .with_llm_model("Qwen/Qwen3-1.6B-Instruct")
@@ -705,7 +705,7 @@ impl ChatManagerBuilder {
     ///
     /// **Local GGUF model**
     /// ```no_run
-    /// # use nucleus_core::ChatManagerBuilder;
+    /// # use nucleus::ChatManagerBuilder;
     /// # async fn example() -> anyhow::Result<()> {
     /// let manager = ChatManagerBuilder::new()
     ///     .with_llm_model("/Users/alice/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf")
@@ -736,7 +736,7 @@ impl ChatManagerBuilder {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{models::EmbeddingModel, ChatManagerBuilder};
+    /// # use nucleus::{models::EmbeddingModel, ChatManagerBuilder};
     /// # async fn example() -> anyhow::Result<()> {
     /// let manager = ChatManagerBuilder::new()
     ///     .with_embedding_model(EmbeddingModel {
@@ -766,9 +766,9 @@ impl ChatManagerBuilder {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{ChatManagerBuilder, Config};
-    /// # use nucleus_core::provider::ProviderType;
-    /// # use nucleus_plugin::{PluginRegistry, Permission};
+    /// # use nucleus::{ChatManagerBuilder, Config};
+    /// # use nucleus::provider::ProviderType;
+    /// # use nucleus::{PluginRegistry, Permission};
     /// # async fn example() -> anyhow::Result<()> {
     /// # let config = Config::load_or_default();
     /// # let registry = PluginRegistry::new(Permission::READ_ONLY);

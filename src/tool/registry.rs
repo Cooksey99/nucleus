@@ -1,4 +1,4 @@
-use crate::{Permission, Plugin, PluginError, PluginOutput};
+use super::{Permission, Plugin, PluginError, PluginOutput};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -108,7 +108,7 @@ mod tests {
             Permission::READ_ONLY
         }
 
-        async fn execute(&self, _input: Value) -> crate::Result<PluginOutput> {
+        async fn execute(&self, _input: Value) -> crate::tool::Result<PluginOutput> {
             Ok(PluginOutput::new("test output"))
         }
     }

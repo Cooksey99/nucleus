@@ -2,9 +2,9 @@
 //!
 //! Keeps setup intentionally minimal: load config, enable default RAG, index data, query data.
 
-use nucleus_core::config::StorageMode;
-use nucleus_core::{ChatManager, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
+use nucleus::config::StorageMode;
+use nucleus::{ChatManager, Config};
+use nucleus::{Permission, PluginRegistry};
 
 const VECTOR_DB_PATH: &str = "./data/nucleus_vectordb_rag_indexing";
 const COLLECTION_NAME: &str = "nucleus_kb_rag_indexing_example";

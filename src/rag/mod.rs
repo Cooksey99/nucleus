@@ -102,7 +102,7 @@ impl RagEngine {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::{Config, Provider, RagEngine};
+    /// # use nucleus::{Config, Provider, RagEngine};
     /// # use std::sync::Arc;
     /// # async fn example(provider: Arc<dyn Provider>) -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
@@ -230,7 +230,7 @@ impl RagEngine {
         use tracing::{debug, info};
         info!("Found {} files to index", files.len());
         for file in &files {
-            debug!(target: "nucleus_core::rag", file = %file.path.display(), "File queued for indexing");
+            debug!(target: "crate::rag", file = %file.path.display(), "File queued for indexing");
         }
         info!("Starting indexing...");
 
@@ -306,7 +306,7 @@ impl RagEngine {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::RagEngine;
+    /// # use nucleus::RagEngine;
     /// # async fn example(engine: RagEngine) -> anyhow::Result<()> {
     /// let dirs = ["./src", "./docs", "./examples"];
     /// let count = engine.index_directories(&dirs).await?;
@@ -498,7 +498,7 @@ impl RagEngine {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus_core::RagEngine;
+    /// # use nucleus::RagEngine;
     /// # async fn example(engine: RagEngine) -> anyhow::Result<()> {
     /// // Remove a specific file
     /// let removed = engine.remove_from_knowledge_base("./src/main.rs").await?;

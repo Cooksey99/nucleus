@@ -1,5 +1,5 @@
 use nucleus::{ChatManagerBuilder, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
+use nucleus::{Permission, PluginRegistry};
 use serde_json::json;
 
 #[tokio::main]

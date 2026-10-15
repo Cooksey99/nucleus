@@ -12,7 +12,7 @@ use mistralrs::{
     EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, RequestBuilder, Response,
     TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolChoice, ToolType,
 };
-use nucleus_plugin::PluginRegistry;
+use crate::tool::PluginRegistry;
 use tracing::{debug, info, warn};
 
 use futures::future::join_all;
@@ -51,8 +51,8 @@ impl MistralRsProvider {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus_core::{provider::MistralRsProvider, Config};
-    /// # use nucleus_plugin::{Permission, PluginRegistry};
+    /// # use nucleus::{provider::MistralRsProvider, Config};
+    /// # use nucleus::{Permission, PluginRegistry};
     /// # use std::sync::Arc;
     /// # async fn example() -> anyhow::Result<()> {
     /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));

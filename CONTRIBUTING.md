@@ -47,11 +47,8 @@ cargo run --example read_file_line
 
 Nucleus is a Cargo workspace with these crates:
 
-- **nucleus-core**: LLM orchestration and chat management
-- **nucleus-plugin**: Plugin system trait and registry
-- **nucleus-std**: Standard plugins (file I/O, search, exec)
+- **nucleus**: the library. Chat, providers, retrieval, and built-in tools.
 - **nucleus-cli**: `login` and `logout` for a Grok account
-- **nucleus**: Main crate tying everything together
 
 ## Code Guidelines
 
@@ -97,11 +94,11 @@ This ensures your work aligns with project goals and avoids duplicate effort.
 
 If you're building a plugin:
 
-1. Implement the `Plugin` trait from `nucleus-plugin`
+1. Implement the `Plugin` trait in `nucleus::tool`
 2. Handle permissions appropriately
 3. Write comprehensive tests
 4. Document expected behavior and limitations
-5. Consider contributing to `nucleus-std` if generally useful
+5. Consider adding it to `nucleus::tools` if generally useful
 
 Example plugin structure:
 

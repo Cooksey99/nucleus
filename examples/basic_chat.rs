@@ -1,14 +1,14 @@
 use std::io::{self, Write};
 
 use nucleus::{ChatManager, CommandEffect, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
+use nucleus::{Permission, PluginRegistry};
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("nucleus_core=info".parse().unwrap()),
+                .add_directive("nucleus=info".parse().unwrap()),
         )
         .init();
 
