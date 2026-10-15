@@ -1,0 +1,60 @@
+# License and advisory checks for the Phase 1 CI gate.
+# The graph includes local and rag so the mistral.rs git deps are scanned.
+# metal and cuda stay out: they need platform SDKs and are mutually exclusive.
+
+[graph]
+all-features = false
+features = ["local", "rag", "experimental"]
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    # serde_yaml 0.9 pulls unmaintained unsafe-libyaml. Config parsing is replaced later.
+    "RUSTSEC-2024-0449",
+    # Transitive through mistral.rs / LanceDB. Not our crates to upgrade in Phase 1.
+    "RUSTSEC-2024-0436",
+    "RUSTSEC-2025-0057",
+    "RUSTSEC-2025-0119",
+]
+
+[licenses]
+version = 2
+unused-allowed-license = "allow"
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "NCSA",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+exceptions = [
+    { allow = ["MIT", "Apache-2.0"], crate = "core_detect" },
+    { allow = ["MIT", "Apache-2.0"], crate = "serde_urlencoded" },
+    { allow = ["Unlicense", "MIT"], crate = "same-file" },
+    { allow = ["Unlicense", "MIT"], crate = "walkdir" },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+    "https://github.com/EricLBuehler/mistral.rs.git",
+    "https://github.com/huggingface/candle.git",
+]

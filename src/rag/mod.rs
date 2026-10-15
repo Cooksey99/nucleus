@@ -111,13 +111,15 @@ impl RagEngine {
     /// # }
     /// ```
     pub async fn new(config: &Config, provider: Arc<dyn Provider>) -> Result<Self> {
-        let rag = config.rag.clone().unwrap();
+        let rag = config
+            .rag
+            .clone()
+            .ok_or_else(|| RagError::Retrieval("RAG is not configured".into()))?;
         let embedder = Embedder::new(provider, rag.embedding_model.clone());
 
         let store = create_vector_store(
             config.storage.clone(),
-            rag
-                .embedding_model
+            rag.embedding_model
                 .embedding_dim
                 .try_into()
                 .unwrap_or_default(),
@@ -527,6 +529,6 @@ impl RagEngine {
     }
 
     pub async fn clear_knowledge_base(&self) {
-        let _ = self.store.clear();
+        let _ = self.store.clear().await;
     }
 }

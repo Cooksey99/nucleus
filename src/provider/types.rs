@@ -24,6 +24,7 @@ impl ProviderType {
 /// Errors that can occur when interacting with a provider.
 #[derive(Debug, Error)]
 pub enum ProviderError {
+    #[cfg(feature = "hosted")]
     #[error("HTTP request failed: {0}")]
     Request(#[from] reqwest::Error),
 
@@ -144,7 +145,7 @@ impl Message {
     pub fn system(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "system".to_string(),
-            context: Some(context).unwrap_or(None),
+            context,
             content: content.into(),
             images: None,
             tool_calls: None,
@@ -154,7 +155,7 @@ impl Message {
     pub fn user(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "user".to_string(),
-            context: Some(context).unwrap_or(None),
+            context,
             content: content.into(),
             images: None,
             tool_calls: None,
@@ -164,7 +165,7 @@ impl Message {
     pub fn assistant(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "assistant".to_string(),
-            context: Some(context).unwrap_or(None),
+            context,
             content: content.into(),
             images: None,
             tool_calls: None,
@@ -174,7 +175,7 @@ impl Message {
     pub fn tool(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "tool".to_string(),
-            context: Some(context).unwrap_or(None),
+            context,
             content: content.into(),
             images: None,
             tool_calls: None,

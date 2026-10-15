@@ -1,4 +1,4 @@
-use nucleus::{PluginRegistry};
+use nucleus::PluginRegistry;
 use nucleus::ReadFilePlugin;
 use std::path::Path;
 

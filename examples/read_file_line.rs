@@ -6,9 +6,9 @@
 //! 3. Plugin reads the file
 //! 4. AI analyzes and responds
 
-use nucleus::{ChatManager, Config};
-use nucleus::{PluginRegistry};
+use nucleus::PluginRegistry;
 use nucleus::ReadFilePlugin;
+use nucleus::{ChatManager, Config};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,9 +33,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Question: What's on line 7 of config.yaml?\n");
 
-    let response = manager
-        .query("What's on line 7 of config.yaml?")
-        .await?;
+    let response = manager.query("What's on line 7 of config.yaml?").await?;
 
     println!("AI Response:\n{}", response);
 

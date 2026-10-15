@@ -3,8 +3,8 @@
 //! Keeps setup intentionally minimal: load config, enable default RAG, index data, query data.
 
 use nucleus::config::StorageMode;
+use nucleus::PluginRegistry;
 use nucleus::{ChatManager, Config};
-use nucleus::{PluginRegistry};
 
 const VECTOR_DB_PATH: &str = "./data/nucleus_vectordb_rag_indexing";
 const COLLECTION_NAME: &str = "nucleus_kb_rag_indexing_example";
@@ -50,7 +50,10 @@ async fn main() -> anyhow::Result<()> {
     for (title, content) in KNOWLEDGE_ITEMS {
         manager.index_text(content, title).await?;
     }
-    println!("Indexed {} documents.", manager.knowledge_base_count().await);
+    println!(
+        "Indexed {} documents.",
+        manager.knowledge_base_count().await
+    );
 
     let queries = [
         "What is the architecture of Nucleus?",

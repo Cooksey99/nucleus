@@ -104,6 +104,7 @@ Quality comes before speed. Each phase must meet everything below that has start
 **Footprint**
 - Track the dependency count and compile time of the default build, so an increase is a deliberate decision.
 - Baseline before Phase 1: 936 packages in `Cargo.lock`, 749 in the default build. mistral.rs 0.8.1 alone is 665 crates (681 with `metal`), so it must stay behind `local`.
+- After the Phase 1 feature split: the default build is 154 crates (`cargo tree --prefix none | sort -u`). mistral.rs and LanceDB are no longer in that build.
 
 **Dogfooding**
 - Before releasing 0.2, build one realistic client-style integration with Nucleus and fix whatever is awkward.
@@ -167,10 +168,11 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 - [x] Remove everything in the "Remove:" decision above, plus leftovers from the earlier project (Go entries in `.gitignore`, `llm-workspace` socket)
 - [x] Merge the crates into `nucleus`: `provider`, `chat`, `tool`, `rag`, `tools`. `agent` replaces `chat` in Phase 2. `mcp` arrives in Phase 5.
 - [x] Remove `Permission`. Plugins are stored as `Arc<dyn Plugin>` with no `Mutex`, and registration is synchronous. Renaming `Plugin` to `Tool` waits, because `provider::Tool` is already the LLM tool spec.
-- [ ] Feature flags: `hosted` (default), `local`, `rag`, `lancedb`, `mcp`, `experimental`, `metal`, `cuda`
-- [ ] Set the minimum supported Rust version (1.88 or later) and the edition (2021 or 2024)
-- [ ] Move to reqwest 0.13
-- [ ] Move mistral.rs from the current git commit to the v0.9.4 tag, and re-check the spike findings measured on 0.8.1 (tool-call history, one call per turn, JSON output that never stops, the Metal prefix-cache and short-embedding bugs); record what changed in `docs/design/spikes/mistralrs.md`
+- [x] Feature flags: `hosted` (default), `local`, `rag`, `lancedb`, `mcp`, `experimental`, `metal`, `cuda`. `rag` also enables `lancedb` until Phase 4 adds a default store. `mcp` is empty until Phase 5.
+- [x] Minimum supported Rust version is 1.94, which mistral.rs v0.9.4 requires. Edition stays 2021.
+- [x] Move to reqwest 0.13 (`json`, `stream`, `form`, `rustls`)
+- [x] Move mistral.rs from git commit `2ed5575` to tag v0.9.4. The current provider compiled after setting `Function.strict`.
+- [ ] Re-check the spike findings measured on 0.8.1 (tool-call history, one call per turn, JSON output that never stops, the Metal prefix-cache and short-embedding bugs) by running the spike against v0.9.4; record what changed in `docs/design/spikes/mistralrs.md`
 - Existing behavior (`ChatManager`, Grok, mistral.rs behind `local`, RAG behind `rag`) keeps compiling and passing tests. The rewrites happen in later phases.
 - **Done when:** the default build depends on little more than reqwest, serde and tokio, and the Phase 1 CI gates pass.
 

@@ -246,10 +246,20 @@ Spike crate depending only on `mistralrs` plus tokio, anyhow, serde_json and fut
 6. **Batch (local):** concurrent requests on one `Arc<Model>` are verified (~1.5× throughput, bounded by `max_num_seqs`). Paged attention stays off (it hangs at 16).
 7. **Model-string grammar:** the three local forms (path, `repo:file.gguf`, repo) all load. No change needed.
 
+## Phase 1 pin
+
+Date: 2026-10-15. Nucleus now depends on git tag **v0.9.4** behind the `local` feature, not commit `2ed5575`.
+
+What was checked:
+- The current `MistralRsProvider` compiles against that tag. The only API break was `Function.strict: Option<bool>` (left unset). **[verified]** `cargo check --features local,rag,experimental`.
+- v0.9.4's MSRV is 1.94, so that is now the crate `rust-version`. **[verified]** v0.9.4 `Cargo.toml` and a local check on Rust 1.94.
+
+What was not re-run: the 0.8.1 behavior checks (tool-call history, one call per turn, GGUF JSON that never stops, Metal short embeddings, prefix-cache NaNs, paged attention at 16). The spike crate in `spikes/mistralrs` is still `mistralrs = "=0.8.1"`. Those stay open until that spike is pointed at v0.9.4 and run again.
+
 ## Open questions
 
 - Will upstream publish 0.9.x to crates.io, and when? Raise it on GitHub.
-- Does v0.9.4 fix the Metal short-input embeddings, the prefix-cache NaN, the paged-attention hang at 16 concurrent requests, and the GGUF EOS padding under JSON constraints? Not tested, because it's a git-only dependency.
+- Does v0.9.4 fix the Metal short-input embeddings, the prefix-cache NaN, the paged-attention hang at 16 concurrent requests, and the GGUF EOS padding under JSON constraints? Not re-run against the tag. The source at v0.9.4 still has the history-replay fix noted above.
 - Linux x86 CPU and CUDA behaviour, and Windows, are untested. The Linux dependency tree resolves without `objc2`.
 - Tool-calling quality on 1.7B or 4B models (only 0.6B was tested).
 - EmbeddingGemma (gated on HF) is untested.

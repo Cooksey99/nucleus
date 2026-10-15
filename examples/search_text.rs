@@ -1,4 +1,4 @@
-use nucleus::{PluginRegistry};
+use nucleus::PluginRegistry;
 use nucleus::SearchPlugin;
 
 #[tokio::main]

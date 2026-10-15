@@ -4,7 +4,7 @@
 
 use nucleus::ChatManagerBuilder;
 use nucleus::Config;
-use nucleus::{PluginRegistry};
+use nucleus::PluginRegistry;
 use nucleus::WriteFilePlugin;
 
 #[tokio::main]

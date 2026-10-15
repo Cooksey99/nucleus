@@ -33,9 +33,10 @@ use crate::provider::{
     create_provider, ChatRequest, ChatResponse, Message, Provider, ProviderType, StructuredOutput,
     Tool, ToolCall, ToolFunction,
 };
+#[cfg(feature = "rag")]
 use crate::rag::RagEngine;
-use anyhow::{Context, Result};
 use crate::tool::PluginRegistry;
+use anyhow::{Context, Result};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -85,7 +86,8 @@ pub struct ChatManager {
     provider: Arc<dyn Provider>,
     /// Registry for available plugins/tools
     registry: Arc<PluginRegistry>,
-    /// RAG manager for knowledge base integration (with persistent storage)
+    /// RAG manager for knowledge base integration (with persistent storage).
+    #[cfg(feature = "rag")]
     rag_engine: Option<Arc<RagEngine>>,
     /// Optional JSON schema for forcing a structured JSON output
     pub structured_output: Option<StructuredOutput>,
@@ -138,12 +140,14 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
+    /// let _ = "compiled when local and rag are enabled";
+    /// # #[cfg(all(feature = "local", feature = "rag"))]
+    /// # async fn example() -> anyhow::Result<()> {
     /// use nucleus::{ChatManager, Config};
     /// use nucleus::provider::MistralRsProvider;
     /// use nucleus::{PluginRegistry};
     /// use std::sync::Arc;
     ///
-    /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
     /// let registry = PluginRegistry::new();
     ///
@@ -154,7 +158,12 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn with_provider(mut self, provider: Arc<dyn Provider>) -> Result<Self> {
-        self.rag_engine = Some(Arc::new(RagEngine::new(&self.config, provider.clone()).await?));
+        #[cfg(feature = "rag")]
+        {
+            self.rag_engine = Some(Arc::new(
+                RagEngine::new(&self.config, provider.clone()).await?,
+            ));
+        }
         self.provider = provider;
         Ok(self)
     }
@@ -164,19 +173,24 @@ impl ChatManager {
     /// # Examples
     ///
     /// ```no_run
-    /// # use nucleus::{ChatManager, Config, Provider, RagEngine};
-    /// # use nucleus::{PluginRegistry};
-    /// # use std::sync::Arc;
-    /// # async fn example(provider: Arc<dyn Provider>) -> anyhow::Result<()> {
+    /// let _ = "compiled when rag is enabled";
+    /// # #[cfg(feature = "rag")]
+    /// # async fn example(provider: std::sync::Arc<dyn nucleus::Provider>) -> anyhow::Result<()> {
+    /// use nucleus::{ChatManager, Config, RagEngine};
+    /// use nucleus::PluginRegistry;
+    /// use std::sync::Arc;
+    ///
     /// let config = Config::load_or_default();
     /// let registry = PluginRegistry::new();
     ///
     /// let custom_rag = RagEngine::new(&config, provider).await?;
     /// let manager = ChatManager::new(config, registry).await?
     ///     .with_rag(Arc::new(custom_rag));
+    /// let _ = manager;
     /// # Ok(())
     /// # }
     /// ```
+    #[cfg(feature = "rag")]
     pub fn with_rag(mut self, rag: Arc<RagEngine>) -> Self {
         self.rag_engine = Some(rag);
         self
@@ -199,9 +213,16 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn knowledge_base_count(&self) -> usize {
-        match self.rag_engine.as_ref() {
-            Some(engine) => engine.count().await,
-            None => 0
+        #[cfg(feature = "rag")]
+        {
+            match self.rag_engine.as_ref() {
+                Some(engine) => engine.count().await,
+                None => 0,
+            }
+        }
+        #[cfg(not(feature = "rag"))]
+        {
+            0
         }
     }
 
@@ -219,29 +240,68 @@ impl ChatManager {
     ///
     /// Returns an error if indexing fails.
     pub async fn index_directory(&self, dir_path: &Path) -> Result<usize> {
-        match self.rag_engine.as_ref() {
-            Some(engine) => engine.index_directory(dir_path).await.context("Failed to index directory"),
-            None => Err(anyhow::anyhow!("RAG Engine not configured"))
+        #[cfg(feature = "rag")]
+        {
+            match self.rag_engine.as_ref() {
+                Some(engine) => engine
+                    .index_directory(dir_path)
+                    .await
+                    .context("Failed to index directory"),
+                None => Err(anyhow::anyhow!("RAG Engine not configured")),
+            }
+        }
+        #[cfg(not(feature = "rag"))]
+        {
+            let _ = dir_path;
+            Err(anyhow::anyhow!("RAG requires the `rag` feature"))
         }
     }
 
     pub async fn index_text(&self, content: &str, source: &str) -> Result<()> {
-        match self.rag_engine.as_ref() {
-            Some(engine) => engine.add_knowledge(content, source).await.context("Failed to index text"),
-            None => Err(anyhow::anyhow!("RAG Engine not configured"))
+        #[cfg(feature = "rag")]
+        {
+            match self.rag_engine.as_ref() {
+                Some(engine) => engine
+                    .add_knowledge(content, source)
+                    .await
+                    .context("Failed to index text"),
+                None => Err(anyhow::anyhow!("RAG Engine not configured")),
+            }
+        }
+        #[cfg(not(feature = "rag"))]
+        {
+            let _ = (content, source);
+            Err(anyhow::anyhow!("RAG requires the `rag` feature"))
         }
     }
 
     pub async fn clear_knowledge_base(&self) -> Result<()> {
-        match self.rag_engine.as_ref() {
-            Some(engine) => engine.clear().await.context("Unable to clear RAG knowledge base"),
-            None => Err(anyhow::anyhow!("RAG Engine not configured"))
+        #[cfg(feature = "rag")]
+        {
+            match self.rag_engine.as_ref() {
+                Some(engine) => engine
+                    .clear()
+                    .await
+                    .context("Unable to clear RAG knowledge base"),
+                None => Err(anyhow::anyhow!("RAG Engine not configured")),
+            }
+        }
+        #[cfg(not(feature = "rag"))]
+        {
+            Err(anyhow::anyhow!("RAG requires the `rag` feature"))
         }
     }
 
     /// Returns whether RAG is configured on this manager.
     pub fn is_rag_enabled(&self) -> bool {
-        self.rag_engine.is_some()
+        #[cfg(feature = "rag")]
+        {
+            self.rag_engine.is_some()
+        }
+        #[cfg(not(feature = "rag"))]
+        {
+            false
+        }
     }
 
     /// Retrieves the RAG context that would be used to augment a query.
@@ -249,18 +309,26 @@ impl ChatManager {
     /// Returns an empty string when RAG is disabled, the knowledge base is empty,
     /// or no relevant context is found.
     pub async fn preview_rag_context(&self, query: &str) -> Result<String> {
-        match self.rag_engine.as_ref() {
-            Some(engine) => {
-                if engine.count().await == 0 {
-                    Ok(String::new())
-                } else {
-                    engine
-                        .retrieve_context(query)
-                        .await
-                        .context("Failed to retrieve RAG context")
+        #[cfg(feature = "rag")]
+        {
+            match self.rag_engine.as_ref() {
+                Some(engine) => {
+                    if engine.count().await == 0 {
+                        Ok(String::new())
+                    } else {
+                        engine
+                            .retrieve_context(query)
+                            .await
+                            .context("Failed to retrieve RAG context")
+                    }
                 }
+                None => Ok(String::new()),
             }
-            None => Ok(String::new()),
+        }
+        #[cfg(not(feature = "rag"))]
+        {
+            let _ = query;
+            Ok(String::new())
         }
     }
 
@@ -542,26 +610,37 @@ impl ChatManager {
 
     /// Retrieve RAG context for this user turn only. Older turns are left unchanged.
     async fn retrieve_context(&self, user_message: &str) -> String {
-        match self.rag_engine.as_ref() {
-            Some(engine) => {
-                let count = engine.count().await;
-                debug!("RAG knowledge base has {} documents", count);
+        #[cfg(feature = "rag")]
+        {
+            match self.rag_engine.as_ref() {
+                Some(engine) => {
+                    let count = engine.count().await;
+                    debug!("RAG knowledge base has {} documents", count);
 
-                if count == 0 {
-                    debug!("RAG knowledge base is empty, skipping context retrieval");
-                    return String::new();
+                    if count == 0 {
+                        debug!("RAG knowledge base is empty, skipping context retrieval");
+                        return String::new();
+                    }
+
+                    debug!("Retrieving RAG context for query: {}", user_message);
+                    engine
+                        .retrieve_context(user_message)
+                        .await
+                        .unwrap_or_else(|e| {
+                            debug!("Could not retrieve RAG context: {}", e);
+                            String::new()
+                        })
                 }
-
-                debug!("Retrieving RAG context for query: {}", user_message);
-                engine.retrieve_context(user_message).await.unwrap_or_else(|e| {
-                    debug!("Could not retrieve RAG context: {}", e);
+                None => {
+                    debug!("RAG engine not configured, skipping context retrieval");
                     String::new()
-                })
+                }
             }
-            None => {
-                debug!("RAG engine not configured, skipping context retrieval");
-                String::new()
-            }
+        }
+        #[cfg(not(feature = "rag"))]
+        {
+            let _ = user_message;
+            String::new()
         }
     }
 
@@ -654,6 +733,12 @@ pub struct ChatManagerBuilder {
     embedding_model_override: Option<EmbeddingModel>,
     provider_type_override: Option<ProviderType>,
     structured_output: Option<StructuredOutput>,
+}
+
+impl Default for ChatManagerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ChatManagerBuilder {
@@ -806,23 +891,28 @@ impl ChatManagerBuilder {
         }
 
         let provider = create_provider(&config, Arc::clone(&self.registry)).await?;
-        let mut rag_engine = None;
-
-        if config.rag.is_some() {
+        #[cfg(feature = "rag")]
+        let rag_engine = if config.rag.is_some() {
             if let Some(embedding_model) = self.embedding_model_override {
                 if let Some(rag_config) = config.rag.as_mut() {
                     rag_config.embedding_model = embedding_model;
                 }
             }
 
-            rag_engine = Some(Arc::new(RagEngine::new(&config, provider.clone()).await?));
+            Some(Arc::new(RagEngine::new(&config, provider.clone()).await?))
+        } else {
+            None
+        };
+        #[cfg(not(feature = "rag"))]
+        if config.rag.is_some() {
+            tracing::warn!("RAG is configured but the `rag` feature is off; retrieval is skipped");
         }
-
 
         Ok(ChatManager {
             config,
             provider,
             registry: self.registry,
+            #[cfg(feature = "rag")]
             rag_engine,
             structured_output: self.structured_output,
             history: Mutex::new(Vec::new()),

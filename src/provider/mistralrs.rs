@@ -7,12 +7,12 @@ use crate::models::EmbeddingModel;
 use crate::Config;
 
 use super::types::*;
+use crate::tool::PluginRegistry;
 use async_trait::async_trait;
 use mistralrs::{
     EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, RequestBuilder, Response,
     TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolChoice, ToolType,
 };
-use crate::tool::PluginRegistry;
 use tracing::{debug, info, warn};
 
 use std::path::Path;
@@ -285,6 +285,8 @@ impl Provider for MistralRsProvider {
                             name: plugin.name().to_string(),
                             description: Some(plugin.description().to_string()),
                             parameters,
+                            // Constrained tool arguments land in Phase 3.
+                            strict: None,
                         },
                     }
                 })
@@ -404,16 +406,20 @@ impl Provider for MistralRsProvider {
         Ok(())
     }
 
-    async fn embed(&self, text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {     
-        let rag = &self.config.rag.clone().unwrap();
-       
+    async fn embed(&self, text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {
+        let rag = self
+            .config
+            .rag
+            .clone()
+            .ok_or_else(|| ProviderError::Other("RAG is not configured".into()))?;
+        let rag = &rag;
+
         let embedding_model = self
             .embedding_model
             .get_or_try_init(|| async {
                 let model_path: String = match &rag.embedding_model.path {
                     Some(path) => path.to_string_lossy().into(),
-                    None => 
-                        rag
+                    None => rag
                         .embedding_model
                         .hf_repo
                         .clone()

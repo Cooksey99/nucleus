@@ -4,7 +4,9 @@
 //! (mistral.rs, Grok, and others) to provide chat completions and embeddings.
 
 mod factory;
+#[cfg(feature = "hosted")]
 pub mod grok;
+#[cfg(feature = "local")]
 pub mod mistralrs;
 mod types;
 
@@ -16,5 +18,9 @@ pub use types::{
 
 // Re-export provider implementations
 pub use factory::create_provider;
-pub use grok::{login as grok_login, logout as grok_logout, GrokProvider};
+#[cfg(feature = "hosted")]
+pub use grok::GrokProvider;
+#[cfg(feature = "experimental")]
+pub use grok::{login as grok_login, logout as grok_logout};
+#[cfg(feature = "local")]
 pub use mistralrs::MistralRsProvider;

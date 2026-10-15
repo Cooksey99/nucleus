@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::tool::{Plugin, PluginError, PluginOutput, Result};
+use async_trait::async_trait;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;
@@ -24,6 +24,12 @@ struct WriteFileParams {
     content: String,
 }
 
+impl Default for ReadFilePlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReadFilePlugin {
     pub fn new() -> Self {
         Self
@@ -34,6 +40,12 @@ impl ReadFilePlugin {
             "path": path
         });
         self.execute(input).await
+    }
+}
+
+impl Default for WriteFilePlugin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

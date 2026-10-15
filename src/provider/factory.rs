@@ -1,17 +1,16 @@
 //! Provider factory for creating LLM providers based on configuration.
 
 use super::types::*;
-use super::MistralRsProvider;
-use crate::{provider::GrokProvider, Config};
 use crate::tool::PluginRegistry;
+use crate::Config;
 use std::sync::Arc;
 use tracing::info;
 
 /// Creates a provider instance based on configuration.
 ///
 /// Supported providers:
-/// - `"mistralrs"` - mistral.rs in-process provider
-/// - `"grok"` - xAI Grok (account OAuth or API key)
+/// - `"mistralrs"` - mistral.rs in-process provider (`local` feature)
+/// - `"grok"` - xAI Grok (`hosted` feature; account login needs `experimental`)
 pub async fn create_provider(
     config: &Config,
     registry: Arc<PluginRegistry>,
@@ -22,14 +21,34 @@ pub async fn create_provider(
 
     match provider_type.as_str() {
         "mistralrs" => {
-            info!("Using mistral.rs provider with model: {}", config.llm.model);
-            let provider = MistralRsProvider::new(config, registry).await?;
-            Ok(Arc::new(provider))
+            #[cfg(feature = "local")]
+            {
+                info!("Using mistral.rs provider with model: {}", config.llm.model);
+                let provider = super::MistralRsProvider::new(config, registry).await?;
+                Ok(Arc::new(provider))
+            }
+            #[cfg(not(feature = "local"))]
+            {
+                let _ = registry;
+                Err(ProviderError::Other(
+                    "mistral.rs requires the `local` feature".into(),
+                ))
+            }
         }
         "grok" => {
-            info!("Using Grok provider");
-            let provider = GrokProvider::new(config)?;
-            Ok(Arc::new(provider))
+            #[cfg(feature = "hosted")]
+            {
+                info!("Using Grok provider");
+                let provider = super::GrokProvider::new(config)?;
+                Ok(Arc::new(provider))
+            }
+            #[cfg(not(feature = "hosted"))]
+            {
+                let _ = (config, registry);
+                Err(ProviderError::Other(
+                    "Grok requires the `hosted` feature".into(),
+                ))
+            }
         }
         _ => Err(ProviderError::Other(format!(
             "Unknown provider type: {provider_type}. Supported: mistralrs, grok"

@@ -1,5 +1,5 @@
+use nucleus::PluginRegistry;
 use nucleus::{ChatManagerBuilder, Config};
-use nucleus::{PluginRegistry};
 use serde_json::json;
 
 #[tokio::main]
@@ -72,9 +72,7 @@ async fn main() -> anyhow::Result<()> {
     chat_manager.clear_structured_output();
 
     println!("Now testing normal conversation (no structured output):");
-    let normal_response = chat_manager
-        .query("What's the capital of Japan?")
-        .await?;
+    let normal_response = chat_manager.query("What's the capital of Japan?").await?;
 
     println!("{}", normal_response);
 

@@ -1,13 +1,16 @@
 //! Grok / xAI provider — OAuth/API key auth + Responses API chat.
 
 use std::fs;
-use std::io::{self, Write};
+#[cfg(feature = "experimental")]
+use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
+#[cfg(feature = "experimental")]
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tracing::info;
@@ -17,10 +20,15 @@ use crate::Config;
 
 use super::types::{ChatRequest, ChatResponse, Message, Provider, ProviderError, Result};
 
+#[cfg(feature = "experimental")]
 const CLIENT_ID: &str = "b1a00492-073a-47ea-816f-4c329264a828";
+#[cfg(feature = "experimental")]
 const DEVICE_URL: &str = "https://auth.x.ai/oauth2/device/code";
+#[cfg(feature = "experimental")]
 const TOKEN_URL: &str = "https://auth.x.ai/oauth2/token";
+#[cfg(feature = "experimental")]
 const SCOPE: &str = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write";
+#[cfg(feature = "experimental")]
 const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const REASONING_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
 const API_BASE: &str = "https://api.x.ai/v1";
@@ -79,6 +87,7 @@ fn new_id() -> String {
     )
 }
 
+#[cfg(feature = "experimental")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Tokens {
     access_token: String,
@@ -87,6 +96,7 @@ struct Tokens {
     expires_at: u64,
 }
 
+#[cfg(feature = "experimental")]
 #[derive(Deserialize)]
 struct DeviceCode {
     device_code: String,
@@ -100,6 +110,7 @@ struct DeviceCode {
     interval: Option<u64>,
 }
 
+#[cfg(feature = "experimental")]
 #[derive(Deserialize)]
 struct TokenResp {
     access_token: Option<String>,
@@ -108,12 +119,13 @@ struct TokenResp {
     error: Option<String>,
 }
 
+#[cfg(feature = "experimental")]
 fn auth_file() -> Result<PathBuf> {
     if let Ok(p) = std::env::var("NUCLEUS_GROK_AUTH_FILE") {
         return Ok(p.into());
     }
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| ProviderError::Other("HOME not set".into()))?;
+    let home =
+        std::env::var_os("HOME").ok_or_else(|| ProviderError::Other("HOME not set".into()))?;
     Ok(PathBuf::from(home).join(".nucleus/grok-auth.json"))
 }
 
@@ -124,6 +136,7 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(feature = "experimental")]
 fn save(tokens: &Tokens) -> Result<()> {
     let path = auth_file()?;
     if let Some(dir) = path.parent() {
@@ -145,6 +158,7 @@ fn save(tokens: &Tokens) -> Result<()> {
     fs::rename(tmp, path).map_err(|e| ProviderError::Other(e.to_string()))
 }
 
+#[cfg(feature = "experimental")]
 fn load() -> Result<Tokens> {
     let path = auth_file()?;
     let raw = fs::read_to_string(&path).map_err(|e| {
@@ -158,6 +172,9 @@ fn load() -> Result<Tokens> {
 }
 
 /// Device-code login. Calls `prompt(url, user_code)` once, then polls until done.
+///
+/// Account login is behind the `experimental` feature.
+#[cfg(feature = "experimental")]
 pub async fn login(mut prompt: impl FnMut(&str, &str)) -> Result<()> {
     let http = reqwest::Client::new();
     let device: DeviceCode = http
@@ -210,7 +227,9 @@ pub async fn login(mut prompt: impl FnMut(&str, &str)) -> Result<()> {
         match body.error.as_deref() {
             Some("authorization_pending") => {}
             Some("slow_down") => interval = (interval + 5).min(30),
-            Some("expired_token") => return Err(ProviderError::Other("device code expired".into())),
+            Some("expired_token") => {
+                return Err(ProviderError::Other("device code expired".into()))
+            }
             Some("access_denied") | Some("authorization_denied") => {
                 return Err(ProviderError::Other("login denied".into()))
             }
@@ -224,6 +243,8 @@ pub async fn login(mut prompt: impl FnMut(&str, &str)) -> Result<()> {
     }
 }
 
+/// Clear stored Grok account credentials.
+#[cfg(feature = "experimental")]
 pub fn logout() -> Result<()> {
     match fs::remove_file(auth_file()?) {
         Ok(()) => Ok(()),
@@ -233,6 +254,7 @@ pub fn logout() -> Result<()> {
 }
 
 /// Access token for API calls (refreshes when near expiry).
+#[cfg(feature = "experimental")]
 pub async fn access_token() -> Result<String> {
     let t = load()?;
     if now() < t.expires_at {
@@ -284,12 +306,27 @@ impl GrokProvider {
             .api_key
             .clone()
             .filter(|s| !s.trim().is_empty())
-            .or_else(|| std::env::var("XAI_API_KEY").ok().filter(|s| !s.trim().is_empty()));
+            .or_else(|| {
+                std::env::var("XAI_API_KEY")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+            });
 
-        if api_key.is_none() && !auth_file().map(|p| p.is_file()).unwrap_or(false) {
-            return Err(ProviderError::Other(
-                "No Grok credentials. Run `nucleus login` or set XAI_API_KEY.".into(),
-            ));
+        if api_key.is_none() {
+            #[cfg(feature = "experimental")]
+            {
+                if !auth_file().map(|p| p.is_file()).unwrap_or(false) {
+                    return Err(ProviderError::Other(
+                        "No Grok credentials. Run `nucleus login` or set XAI_API_KEY.".into(),
+                    ));
+                }
+            }
+            #[cfg(not(feature = "experimental"))]
+            {
+                return Err(ProviderError::Other(
+                    "No Grok API key. Set XAI_API_KEY, or enable the `experimental` feature and run `nucleus login`.".into(),
+                ));
+            }
         }
 
         let base_url = resolve_base_url(&config.llm.base_url, api_key.is_some());
@@ -373,9 +410,17 @@ impl GrokProvider {
 
     pub async fn bearer_token(&self) -> Result<String> {
         if let Some(key) = &self.api_key {
-            Ok(key.clone())
-        } else {
+            return Ok(key.clone());
+        }
+        #[cfg(feature = "experimental")]
+        {
             access_token().await
+        }
+        #[cfg(not(feature = "experimental"))]
+        {
+            Err(ProviderError::Other(
+                "Grok account login requires the `experimental` feature".into(),
+            ))
         }
     }
 
@@ -452,7 +497,9 @@ impl Provider for GrokProvider {
         if !response.status().is_success() {
             let status = response.status();
             let err = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Api(format!("Grok chat failed ({status}): {err}")));
+            return Err(ProviderError::Api(format!(
+                "Grok chat failed ({status}): {err}"
+            )));
         }
 
         info!(status = %response.status(), "Grok stream started");
@@ -524,7 +571,10 @@ fn pop_sse_frame(buffer: &mut String) -> Option<String> {
 }
 
 fn event_type(event: &Value) -> &str {
-    event.get("type").and_then(|v| v.as_str()).unwrap_or("event")
+    event
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("event")
 }
 
 fn reasoning_delta(event: &Value) -> Option<&str> {
@@ -669,7 +719,10 @@ mod tests {
 
     #[test]
     fn oauth_defaults_to_cli_proxy() {
-        assert_eq!(resolve_base_url("http://localhost:11434", false), PROXY_BASE);
+        assert_eq!(
+            resolve_base_url("http://localhost:11434", false),
+            PROXY_BASE
+        );
         assert_eq!(resolve_base_url(API_BASE, false), PROXY_BASE);
         assert_eq!(resolve_base_url(PROXY_BASE, false), PROXY_BASE);
     }
@@ -691,8 +744,7 @@ mod tests {
     #[test]
     fn crlf_sse_frames_yield_text() {
         let mut buffer =
-            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\r\n\r\n"
-                .to_string();
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\r\n\r\n".to_string();
         normalize_newlines(&mut buffer);
         let frame = pop_sse_frame(&mut buffer).unwrap();
         let data = frame.strip_prefix("data:").unwrap().trim();

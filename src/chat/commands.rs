@@ -15,7 +15,7 @@ pub enum CommandEffect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Builtin {
+pub(crate) enum Builtin {
     Help,
     Reset,
     Exit,
@@ -134,10 +134,22 @@ mod tests {
 
     #[test]
     fn known_commands_parse() {
-        assert!(matches!(parse("/reset"), Some(Parsed::Builtin(Builtin::Reset))));
-        assert!(matches!(parse("/RESET"), Some(Parsed::Builtin(Builtin::Reset))));
-        assert!(matches!(parse("/quit"), Some(Parsed::Builtin(Builtin::Exit))));
-        assert!(matches!(parse("/help"), Some(Parsed::Builtin(Builtin::Help))));
+        assert!(matches!(
+            parse("/reset"),
+            Some(Parsed::Builtin(Builtin::Reset))
+        ));
+        assert!(matches!(
+            parse("/RESET"),
+            Some(Parsed::Builtin(Builtin::Reset))
+        ));
+        assert!(matches!(
+            parse("/quit"),
+            Some(Parsed::Builtin(Builtin::Exit))
+        ));
+        assert!(matches!(
+            parse("/help"),
+            Some(Parsed::Builtin(Builtin::Help))
+        ));
     }
 
     #[test]

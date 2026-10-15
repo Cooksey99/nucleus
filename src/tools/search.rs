@@ -1,6 +1,6 @@
-use async_trait::async_trait;
 use crate::patterns;
 use crate::tool::{Plugin, PluginError, PluginOutput, Result};
+use async_trait::async_trait;
 use regex::Regex;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
@@ -39,6 +39,12 @@ fn default_exclude_patterns() -> Vec<String> {
     patterns::default_exclude_patterns()
 }
 
+impl Default for SearchPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SearchPlugin {
     pub fn new() -> Self {
         Self
@@ -56,7 +62,7 @@ impl Plugin for SearchPlugin {
 
     fn parameter_schema(&self) -> Value {
         let schema = schema_for!(SearchParams);
-        serde_json::to_value(schema).unwrap()
+        serde_json::to_value(schema).unwrap_or_else(|_| serde_json::json!({}))
     }
 
     async fn execute(&self, input: Value) -> Result<PluginOutput> {
@@ -83,7 +89,14 @@ impl Plugin for SearchPlugin {
             } else {
                 format!("(?i){}", escaped)
             };
-            Regex::new(&pattern).unwrap()
+            match Regex::new(&pattern) {
+                Ok(regex) => regex,
+                Err(err) => {
+                    return Err(PluginError::InvalidInput(format!(
+                        "Invalid search pattern: {err}"
+                    )))
+                }
+            }
         };
 
         let mut results = Vec::new();
@@ -131,9 +144,10 @@ impl Plugin for SearchPlugin {
             "results": results
         });
 
-        Ok(PluginOutput::new(
-            serde_json::to_string_pretty(&result_json).unwrap(),
-        ))
+        let rendered = serde_json::to_string_pretty(&result_json).map_err(|err| {
+            PluginError::ExecutionFailed(format!("Failed to render search results: {err}"))
+        })?;
+        Ok(PluginOutput::new(rendered))
     }
 }
 

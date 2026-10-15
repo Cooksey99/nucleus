@@ -1,4 +1,4 @@
-/// Common file patterns used across nucleus for filtering files during indexing and search.
+//! Common file patterns used across nucleus for filtering files during indexing and search.
 
 /// Default patterns to exclude from indexing and search.
 /// Returns patterns that should be skipped in file operations.

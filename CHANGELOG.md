@@ -8,10 +8,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
-- CI workflow (`.github/workflows/ci.yml`): build, test and doctest on Linux and macOS, plus a clippy report. Clippy warnings don't fail the build yet.
+- CI workflow (`.github/workflows/ci.yml`): build, test and doctest on Linux and macOS.
+- Feature flags: `hosted` (default), `std` (default), `local`, `rag`, `lancedb`, `mcp` (empty until Phase 5), `experimental`, `metal`, and `cuda`.
+- Phase 1 CI gates: clippy `-D warnings`, rustfmt, cargo-deny, an MSRV check, and `cargo hack --each-feature` (excluding `metal` and `cuda`).
 
 ### Changed
 - Merge `nucleus-core`, `nucleus-plugin`, and `nucleus-std` into the `nucleus` crate. Built-in tools stay behind the `std` feature.
+- Minimum supported Rust version is 1.94. Edition stays 2021.
+- reqwest 0.13, with rustls. Grok account login is behind `experimental`.
+- mistral.rs is the v0.9.4 git tag, behind `local`. The default build no longer depends on it or on LanceDB.
 
 ### Removed
 - The plugin `Permission` system. Registration is synchronous and always succeeds. An approval hook comes later.

@@ -1,7 +1,7 @@
 // The initial indexing in this example can take a few minutes
 
+use nucleus::PluginRegistry;
 use nucleus::{ChatManagerBuilder, CommandEffect, Config};
-use nucleus::{PluginRegistry};
 
 #[tokio::main]
 async fn main() {

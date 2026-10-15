@@ -68,7 +68,7 @@ pub async fn create_vector_store(
 ) -> Result<Arc<dyn VectorStore>> {
     match storage_config.storage_mode.clone() {
         StorageMode::Embedded { path } => {
-            let store = LanceDbStore::new(storage_config, &path, vector_size.into()).await?;
+            let store = LanceDbStore::new(storage_config, &path, vector_size).await?;
             Ok(Arc::new(store))
         }
     }

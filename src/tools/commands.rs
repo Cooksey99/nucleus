@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::tool::{Plugin, PluginError, PluginOutput, Result};
+use async_trait::async_trait;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::Value;
@@ -19,6 +19,12 @@ pub struct ExecParams {
 }
 
 pub struct ExecPlugin {}
+
+impl Default for ExecPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ExecPlugin {
     pub fn new() -> Self {
@@ -62,8 +68,8 @@ impl Plugin for ExecPlugin {
 
         let mut command = Command::new(&params.command);
         command.envs(&params.env);
-        if params.cwd.is_some() {
-            command.current_dir(&params.cwd.unwrap_or_default());
+        if let Some(cwd) = &params.cwd {
+            command.current_dir(cwd);
         }
 
         let output = match command.output().await {
