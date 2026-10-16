@@ -172,7 +172,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 - [x] Minimum supported Rust version is 1.94, which mistral.rs v0.9.4 requires. Edition stays 2021.
 - [x] Move to reqwest 0.13 (`json`, `stream`, `form`, `rustls`)
 - [x] Move mistral.rs from git commit `2ed5575` to tag v0.9.4. The current provider compiled after setting `Function.strict`.
-- [ ] Re-check the spike findings measured on 0.8.1 (tool-call history, one call per turn, JSON output that never stops, the Metal prefix-cache and short-embedding bugs) by running the spike against v0.9.4; record what changed in `docs/design/spikes/mistralrs.md`
+- [x] Re-check the spike findings measured on 0.8.1 (tool-call history, one call per turn, JSON output that never stops, the Metal prefix-cache and short-embedding bugs) by running the spike against v0.9.4; record what changed in `docs/design/spikes/mistralrs.md` (history, parallel calls, GGUF JSON termination and the prefix-cache NaN all fixed; short-embedding re-check blocked — the v0.9.4 embedding build panics. See "Phase 1 re-check: v0.9.4" in the note.)
 - Existing behavior (`ChatManager`, Grok, mistral.rs behind `local`, RAG behind `rag`) keeps compiling and passing tests. The rewrites happen in later phases.
 - **Done when:** the default build depends on little more than reqwest, serde and tokio, and the Phase 1 CI gates pass.
 
