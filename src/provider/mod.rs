@@ -6,6 +6,7 @@
 mod factory;
 #[cfg(feature = "hosted")]
 pub mod grok;
+pub mod mock;
 #[cfg(feature = "local")]
 pub mod mistralrs;
 mod types;

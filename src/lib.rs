@@ -1,5 +1,9 @@
 #![recursion_limit = "256"]
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
+// `nucleus::Error` is deliberately a large enum with structured payloads
+// (core-api.md §6); boxing its variants would change the approved signatures.
+#![allow(clippy::result_large_err)]
 #![cfg_attr(
     not(test),
     deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
@@ -20,20 +24,43 @@
 //! - `mcp`: reserved for Phase 5
 //! - `metal`: Apple Silicon acceleration for mistral.rs
 //! - `cuda`: NVIDIA acceleration for mistral.rs
+//!
+//! The module layout follows `docs/design/core-api.md` §2.
 
-pub mod chat;
+pub mod agent;
+pub mod batch;
 pub mod config;
+pub mod conversation;
+pub mod error;
+pub mod event;
+pub mod extract;
+pub mod message;
 pub mod models;
+pub mod options;
 pub mod patterns;
 pub mod provider;
 #[cfg(feature = "rag")]
 pub mod rag;
+pub mod store;
 pub mod tool;
 
 #[cfg(feature = "std")]
 pub mod tools;
 
-pub use chat::{ChatManager, ChatManagerBuilder, CommandEffect};
+// The core error type and the new conversation model.
+pub use conversation::{Conversation, ConversationId};
+pub use error::{Error, ProviderError, RequestId, Result};
+pub use event::{Cost, CostSource, Event, StopReason, Usage};
+pub use message::{KnowledgeSource, Message, Part, ProviderItem, Role, ToolCallId, ToolOutput};
+pub use options::{CacheTtl, Effort, RunOptions, Thinking, ThinkingDisplay};
+pub use store::ConversationStore;
+
+// Turn-level agent data types.
+pub use agent::{Approval, KnowledgeMode, Turn};
+
+#[cfg(any(feature = "hosted", feature = "lancedb"))]
+pub use event::EventStream;
+
 pub use config::{Config, IndexerConfig};
 #[cfg(feature = "hosted")]
 pub use provider::GrokProvider;
@@ -41,9 +68,11 @@ pub use provider::GrokProvider;
 pub use provider::MistralRsProvider;
 #[cfg(feature = "experimental")]
 pub use provider::{grok_login, grok_logout};
+
+// The legacy provider and tool surface, still used by the hosted and local
+// providers and by the built-in tools until they move to the new traits.
 pub use provider::{
-    ChatRequest, ChatResponse, Message, Provider, ProviderError, Tool, ToolCall, ToolCallFunction,
-    ToolFunction,
+    ChatRequest, ChatResponse, Provider, Tool, ToolCall, ToolCallFunction, ToolFunction,
 };
 #[cfg(feature = "rag")]
 pub use rag::RagEngine;
@@ -52,9 +81,27 @@ pub use tool::{Plugin, PluginError, PluginOutput, PluginRegistry};
 #[cfg(feature = "std")]
 pub use tools::{ExecPlugin, ReadFilePlugin, SearchPlugin, WriteFilePlugin};
 
+/// One-shot completion against a hosted model.
+///
+/// `model` is a `provider/model` string, such as `"openai/gpt-5.1"`. This is the
+/// library's only top-level function; everything else hangs off the agent.
+///
+/// See `docs/design/core-api.md` §11.1.
+///
+/// # Errors
+///
+/// Returns [`Error`] when the model cannot be resolved or the call fails.
+pub async fn complete(model: impl AsRef<str>, prompt: impl AsRef<str>) -> Result<String> {
+    let _ = (model.as_ref(), prompt.as_ref());
+    todo!("one-shot completion is implemented with the core agent")
+}
+
 /// Convenient imports.
 pub mod prelude {
-    pub use crate::{ChatManager, ChatManagerBuilder, Config, Plugin, PluginRegistry, Provider};
+    pub use crate::{
+        complete, Config, Conversation, ConversationStore, Error, Message, Plugin, PluginRegistry,
+        Provider, Result, Role, RunOptions, Usage,
+    };
 
     #[cfg(feature = "std")]
     pub use crate::{ExecPlugin, ReadFilePlugin, SearchPlugin, WriteFilePlugin};

@@ -15,37 +15,23 @@ Nucleus is a **library**, not an application. It provides the building blocks fo
 
 ## Example Usage
 
-Here's a minimal example that lets an AI read and analyze files:
+Here's a minimal example that makes a single hosted completion:
 
 ```rust
-use nucleus::{ChatManager, Config, PluginRegistry, ReadFilePlugin};
-use std::sync::Arc;
+use nucleus::Error;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let config = Config::load_or_default();
-    
-    // Register plugins the AI can use
-    let mut registry = PluginRegistry::new();
-    registry.register(ReadFilePlugin::new());
-    
-    let manager = ChatManager::new(config, registry).await;
-    
-    // Ask the AI a question - it will use plugins to answer.
-    // A later query on the same manager continues this conversation.
-    let response = manager.query(
-        "What's on line 7 of Cargo.toml?"
-    ).await?;
-    
-    println!("AI: {}", response);
+async fn main() -> Result<(), Error> {
+    let summary = nucleus::complete("openai/gpt-5.1", "Summarize the design in one line.").await?;
+    println!("{summary}");
     Ok(())
 }
 ```
 
-The AI will:
-1. Recognize it needs to read a file
-2. Use the `ReadFilePlugin` to get the content
-3. Analyze and respond with the answer
+The agent API - tools, retrieval and conversations - is specified in
+[`docs/design/core-api.md`](docs/design/core-api.md). The example above is the
+`one_shot` example; it is written against the new API and does not run yet
+because the agent internals are still being built.
 
 ## Installation
 
@@ -58,8 +44,8 @@ cargo build --release
 ### 2. Run Examples
 
 ```bash
-cargo run --example read_file_line
-cargo run --example write_file
+cargo run --example one_shot
+cargo run --example read_file
 ```
 
 ## Architecture

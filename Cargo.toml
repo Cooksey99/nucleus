@@ -73,31 +73,7 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 # Examples that need a non-default feature are skipped unless it is enabled.
 [[example]]
-name = "basic_chat"
-required-features = ["local"]
-
-[[example]]
-name = "structure_output"
-required-features = ["local"]
-
-[[example]]
-name = "write_file"
-required-features = ["local", "std"]
-
-[[example]]
-name = "read_file_line"
-required-features = ["local", "std"]
-
-[[example]]
-name = "rag_indexing"
-required-features = ["rag"]
-
-[[example]]
-name = "terminal_rag_chat"
-required-features = ["rag"]
-
-[[example]]
-name = "grok_chat"
+name = "one_shot"
 required-features = ["hosted"]
 
 # Optimize heavy dependencies even in debug builds.
@@ -114,7 +90,7 @@ opt-level = 3
 [workspace.dependencies]
 # Shared dependencies across workspace
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = { version = "1.0.149", features = ["raw_value"] }
 serde_yaml = "0.9"
 thiserror = "2.0"
 tokio = { version = "1", features = ["full"] }

@@ -1,3 +1,5 @@
+//! Embedding-model metadata.
+
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -5,12 +7,19 @@ use serde::{Deserialize, Serialize};
 /// An embedding model: a Hugging Face repo or a local path, plus its vector size.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingModel {
+    /// Stable identifier for the model.
     pub id: String,
+    /// Human-readable model name.
     pub name: String,
+    /// Local path to the model, when it is stored on disk.
     pub path: Option<PathBuf>,
+    /// Hugging Face repository, when the model is downloaded from the Hub.
     pub hf_repo: Option<String>,
+    /// Maximum context length in tokens.
     pub context_length: usize,
+    /// Size of the embedding vectors this model produces.
     pub embedding_dim: usize,
+    /// Short description of the model.
     pub description: String,
 }
 

@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 /// Plugin for reading file contents.
 pub struct ReadFilePlugin;
+
+/// Plugin for writing file contents.
 pub struct WriteFilePlugin;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -31,10 +33,12 @@ impl Default for ReadFilePlugin {
 }
 
 impl ReadFilePlugin {
+    /// Create the plugin.
     pub fn new() -> Self {
         Self
     }
 
+    /// Read `path` using the plugin's parameter schema.
     pub async fn read(&self, path: &Path) -> Result<PluginOutput> {
         let input = serde_json::json!({
             "path": path
@@ -50,6 +54,7 @@ impl Default for WriteFilePlugin {
 }
 
 impl WriteFilePlugin {
+    /// Create the plugin.
     pub fn new() -> Self {
         Self
     }
