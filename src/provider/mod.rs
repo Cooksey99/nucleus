@@ -6,9 +6,9 @@
 mod factory;
 #[cfg(feature = "hosted")]
 pub mod grok;
-pub mod mock;
 #[cfg(feature = "local")]
 pub mod mistralrs;
+pub mod mock;
 mod types;
 
 // Re-export common types
