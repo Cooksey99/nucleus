@@ -2,9 +2,9 @@
 //!
 //! Keeps setup intentionally minimal: load config, enable default RAG, index data, query data.
 
-use nucleus_core::config::StorageMode;
-use nucleus_core::{ChatManager, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
+use nucleus::config::StorageMode;
+use nucleus::PluginRegistry;
+use nucleus::{ChatManager, Config};
 
 const VECTOR_DB_PATH: &str = "./data/nucleus_vectordb_rag_indexing";
 const COLLECTION_NAME: &str = "nucleus_kb_rag_indexing_example";
@@ -43,14 +43,17 @@ async fn main() -> anyhow::Result<()> {
     let _ = std::fs::remove_dir_all(VECTOR_DB_PATH);
     std::fs::create_dir_all(VECTOR_DB_PATH)?;
 
-    let manager = ChatManager::new(config, PluginRegistry::new(Permission::READ_WRITE)).await?;
+    let manager = ChatManager::new(config, PluginRegistry::new()).await?;
     println!("RAG enabled: {}", manager.is_rag_enabled());
 
     manager.clear_knowledge_base().await?;
     for (title, content) in KNOWLEDGE_ITEMS {
         manager.index_text(content, title).await?;
     }
-    println!("Indexed {} documents.", manager.knowledge_base_count().await);
+    println!(
+        "Indexed {} documents.",
+        manager.knowledge_base_count().await
+    );
 
     let queries = [
         "What is the architecture of Nucleus?",

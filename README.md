@@ -9,8 +9,8 @@ A privacy-first, modular AI engine for building customizable developer tooling. 
 Nucleus is a **library**, not an application. It provides the building blocks for creating AI-powered developer tools:
 
 - **Tool-Augmented LLM**: Execute real actions (read files, search code, run commands) instead of just text generation
-- **Plugin System**: Extensible tools with permission controls
-- **Local-First**: Works with local LLMs (Ollama, llama.cpp, etc.) - no data leaves your machine
+- **Plugin System**: Extensible tools the model can call
+- **Local-First**: Works with a local mistral.rs model - no data leaves your machine
 - **Modular Architecture**: Use only what you need
 
 ## Example Usage
@@ -18,9 +18,7 @@ Nucleus is a **library**, not an application. It provides the building blocks fo
 Here's a minimal example that lets an AI read and analyze files:
 
 ```rust
-use nucleus_core::{ChatManager, Config};
-use nucleus_plugin::{PluginRegistry, Permission};
-use nucleus_std::ReadFilePlugin;
+use nucleus::{ChatManager, Config, PluginRegistry, ReadFilePlugin};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -28,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load_or_default();
     
     // Register plugins the AI can use
-    let mut registry = PluginRegistry::new(Permission::READ_ONLY);
+    let mut registry = PluginRegistry::new();
     registry.register(ReadFilePlugin::new());
     
     let manager = ChatManager::new(config, registry).await;
@@ -68,11 +66,8 @@ cargo run --example write_file
 
 Nucleus is structured as a workspace with clear separation:
 
-- **nucleus-core**: LLM orchestration, chat management, configuration
-- **nucleus-plugin**: Plugin trait and registry system
-- **nucleus-std**: Standard plugins (file I/O, search, exec)
-- **nucleus-dev**: Developer-specific plugins (git, LSP integration)
-- **nucleus**: Convenience wrapper with feature flags
+- **nucleus**: the library. Chat, providers, retrieval, and built-in tools live here.
+- **nucleus-cli**: `login` and `logout` for a Grok account
 
 ## Installation
 
@@ -87,18 +82,11 @@ For minimal setup without standard plugins:
 ```toml
 [dependencies]
 nucleus = { version = "0.1", default-features = false }
-nucleus-core = "0.1"
-```
-
-For full functionality including dev tools:
-```toml
-[dependencies]
-nucleus = { version = "0.1", features = ["full"] }
 ```
 
 ### Vector Database (for RAG)
 
-Nucleus supports vector databases for persistent storage in RAG (Retrieval Augmented Generation):
+Nucleus uses embedded LanceDB for persistent storage in RAG (Retrieval Augmented Generation):
 
 - **Automatic deduplication**: Re-indexing replaces old documents
 - **Persistent storage**: Data survives restarts

@@ -24,18 +24,14 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      # LanceDB generates code from .proto files at build time.
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: dtolnay/rust-toolchain@1.94
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --workspace --all-targets --locked
@@ -44,20 +40,84 @@ jobs:
       - name: Doctest
         run: cargo test --workspace --doc --locked
 
+  test-local:
+    name: Test local and rag
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94
+      # LanceDB generates code from .proto files at build time.
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --workspace --all-targets --locked --features local,rag,experimental
+      - name: Doctest
+        run: cargo test --workspace --doc --locked --features local,rag,experimental
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.94
         with:
           components: clippy
       - uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
-      # Reported but not enforced until the end of Phase 1 (see ROADMAP.md, "When gates start").
-      # Switch to `-- -D warnings` then.
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked
+      - name: Clippy (default)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Clippy (local, rag, experimental)
+        run: cargo clippy --workspace --all-targets --locked --features local,rag,experimental -- -D warnings
+
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94
+        with:
+          components: rustfmt
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94
+      - uses: Swatinem/rust-cache@v2
+      - name: Check on rust-version
+        run: cargo check --workspace --all-targets --locked
+
+  features:
+    name: Feature combinations
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: taiki-e/install-action@cargo-hack
+      - uses: Swatinem/rust-cache@v2
+      # metal and cuda need platform SDKs and are not combined here.
+      - name: Each feature
+        run: cargo hack check --workspace --each-feature --exclude-features metal,cuda --locked

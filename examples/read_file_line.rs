@@ -6,9 +6,9 @@
 //! 3. Plugin reads the file
 //! 4. AI analyzes and responds
 
-use nucleus_core::{ChatManager, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
-use nucleus_std::ReadFilePlugin;
+use nucleus::PluginRegistry;
+use nucleus::ReadFilePlugin;
+use nucleus::{ChatManager, Config};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("nucleus_core=debug".parse().unwrap()),
+                .add_directive("nucleus=debug".parse().unwrap()),
         )
         .init();
 
@@ -26,16 +26,14 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::load_or_default();
 
-    let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-    registry.register(ReadFilePlugin::new()).await;
+    let mut registry = PluginRegistry::new();
+    registry.register(ReadFilePlugin::new());
 
     let manager = ChatManager::new(config, registry).await?;
 
     println!("Question: What's on line 7 of config.yaml?\n");
 
-    let response = manager
-        .query("What's on line 7 of config.yaml?")
-        .await?;
+    let response = manager.query("What's on line 7 of config.yaml?").await?;
 
     println!("AI Response:\n{}", response);
 

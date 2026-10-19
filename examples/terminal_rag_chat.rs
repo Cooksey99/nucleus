@@ -1,7 +1,7 @@
 // The initial indexing in this example can take a few minutes
 
+use nucleus::PluginRegistry;
 use nucleus::{ChatManagerBuilder, CommandEffect, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
 
 #[tokio::main]
 async fn main() {
@@ -9,13 +9,13 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("nucleus_core=off".parse().unwrap())
+                .add_directive("nucleus=off".parse().unwrap())
                 .add_directive("mistralrs_core=info".parse().unwrap()),
         )
         .init();
 
     let config = Config::load_or_default();
-    let registry = PluginRegistry::new(Permission::READ_ONLY);
+    let registry = PluginRegistry::new();
 
     let manager = ChatManagerBuilder::new()
         .with_config(config)
@@ -43,7 +43,7 @@ async fn main() {
     let path = dirs::home_dir()
         .ok_or("Home directory missing")
         .unwrap()
-        .join("development/nucleus/nucleus-core/src");
+        .join("development/nucleus/src");
     println!("Path: {}", path.display());
 
     match manager.index_directory(&path).await {

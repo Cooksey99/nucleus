@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Lightweight HTTPS endpoint and daemon controls for Nucleus models"
+description = "Nucleus CLI: Grok account login and logout"
+rust-version.workspace = true
+
 [[bin]]
 name = "nucleus"
 path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-nucleus-core.workspace = true
-nucleus-plugin.workspace = true
+nucleus = { path = "..", default-features = false, features = ["experimental"] }
 tokio.workspace = true

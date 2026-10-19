@@ -1,16 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "nucleus-core",
-    "nucleus-plugin",
-    "nucleus-std",
-    "nucleus-dev",
     "nucleus-cli",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.94"
 authors = ["Andrew Cooksey"]
 license = "MIT"
 repository = "https://github.com/Cooksey99/nucleus"
@@ -22,39 +19,89 @@ categories = ["development-tools", "api-bindings"]
 name = "nucleus"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 description = "Privacy-first, modular AI engine for building customizable developer tooling"
 
 [dependencies]
-nucleus-core.workspace = true
-nucleus-plugin.workspace = true
-nucleus-std = { workspace = true, optional = true }
-nucleus-dev = { workspace = true, optional = true }
-async-trait.workspace = true
-dirs = "6.0.0"
-schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
+futures = { workspace = true, optional = true }
+anyhow.workspace = true
+async-trait.workspace = true
+schemars.workspace = true
+tracing = "0.1.43"
+reqwest = { workspace = true, optional = true }
+mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", tag = "v0.9.4", default-features = false, optional = true }
+lancedb = { version = "0.26.2", optional = true }
+arrow-array = { version = "57.2", optional = true }
+arrow-schema = { version = "57.2", optional = true }
+walkdir = { version = "2.0", optional = true }
+regex = { version = "1.10", optional = true }
 
 [features]
-default = ["std"]
-std = ["nucleus-std"]
-dev = ["nucleus-dev"]
-full = ["std", "dev"]
-# GPU/ML acceleration (pass-through to nucleus-core)
-metal = ["nucleus-core/metal"]
-cuda = ["nucleus-core/cuda"]
-coreml = ["nucleus-core/coreml"]
+default = ["hosted", "std"]
+# Built-in file, search, and exec tools.
+std = ["dep:walkdir", "dep:regex"]
+# Hosted providers (Grok today). The default build.
+hosted = ["dep:reqwest", "dep:futures"]
+# In-process mistral.rs. Opt-in: it adds hundreds of crates.
+local = ["dep:mistralrs"]
+# LanceDB vector store. Implied by `rag` until Phase 4 adds a default store.
+lancedb = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema", "dep:futures"]
+# Retrieval. Turns on local embeddings and, for now, LanceDB.
+rag = ["local", "lancedb"]
+# Reserved for the Phase 5 MCP client. Empty on purpose.
+mcp = []
+# Unofficial or unstable functionality. Grok account login lives here.
+experimental = ["hosted"]
+metal = ["local", "mistralrs/metal"]
+cuda = ["local", "mistralrs/cuda"]
 
 [dev-dependencies]
 tokio.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
+tempfile = "3.13"
+dirs = "6.0.0"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
-# Optimize heavy dependencies even in debug builds
-# This keeps your code fast to compile while making inference fast
+# Examples that need a non-default feature are skipped unless it is enabled.
+[[example]]
+name = "basic_chat"
+required-features = ["local"]
+
+[[example]]
+name = "structure_output"
+required-features = ["local"]
+
+[[example]]
+name = "write_file"
+required-features = ["local", "std"]
+
+[[example]]
+name = "read_file_line"
+required-features = ["local", "std"]
+
+[[example]]
+name = "rag_indexing"
+required-features = ["rag"]
+
+[[example]]
+name = "terminal_rag_chat"
+required-features = ["rag"]
+
+[[example]]
+name = "grok_chat"
+required-features = ["hosted"]
+
+# Optimize heavy dependencies even in debug builds.
+# This keeps your code fast to compile while making inference fast.
 [profile.dev.package."*"]
 opt-level = 2
 
@@ -72,15 +119,12 @@ serde_yaml = "0.9"
 thiserror = "2.0"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "form", "rustls", "charset"] }
 futures = "0.3"
 anyhow = "1.0"
 async-trait = "0.1"
 schemars = "1.2.0"
 
-# Workspace crates
-nucleus-core = { path = "nucleus-core", version = "0.1.0" }
-nucleus-plugin = { path = "nucleus-plugin", version = "0.1.0" }
-nucleus-std = { path = "nucleus-std", version = "0.1.0" }
-nucleus-dev = { path = "nucleus-dev", version = "0.1.0" }
-
+[package.metadata.docs.rs]
+features = ["hosted", "std", "local", "rag", "experimental"]
+rustdoc-args = ["--cfg", "docsrs"]

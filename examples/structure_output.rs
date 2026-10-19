@@ -1,12 +1,12 @@
+use nucleus::PluginRegistry;
 use nucleus::{ChatManagerBuilder, Config};
-use nucleus_plugin::{Permission, PluginRegistry};
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load configuration
     let config = Config::load_or_default();
-    let registry = PluginRegistry::new(Permission::NONE);
+    let registry = PluginRegistry::new();
 
     // Create chat manager using builder pattern
     let mut chat_manager = ChatManagerBuilder::new()
@@ -72,9 +72,7 @@ async fn main() -> anyhow::Result<()> {
     chat_manager.clear_structured_output();
 
     println!("Now testing normal conversation (no structured output):");
-    let normal_response = chat_manager
-        .query("What's the capital of Japan?")
-        .await?;
+    let normal_response = chat_manager.query("What's the capital of Japan?").await?;
 
     println!("{}", normal_response);
 

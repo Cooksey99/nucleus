@@ -1,0 +1,457 @@
+//! mistral.rs provider implementation.
+//!
+//! This module provides an in-process LLM provider using mistral.rs.
+//! Supports both local GGUF files and automatic HuggingFace downloads.
+
+use crate::models::EmbeddingModel;
+use crate::Config;
+
+use super::types::*;
+use crate::tool::PluginRegistry;
+use async_trait::async_trait;
+use mistralrs::{
+    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, RequestBuilder, Response,
+    TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolChoice, ToolType,
+};
+use tracing::{debug, info, warn};
+
+use std::path::Path;
+use std::sync::Arc;
+use tokio::sync::OnceCell;
+
+/// mistral.rs in-process provider.
+///
+/// Automatically detects if model is:
+/// 1. A local GGUF file path (loads directly)
+/// 2. A HuggingFace model ID (downloads if needed)
+///
+/// Note: Use async `new()` - model loading requires async operations.
+pub struct MistralRsProvider {
+    model: Arc<Model>,
+    model_name: String,
+    registry: Arc<PluginRegistry>,
+    config: Config,
+    embedding_model: OnceCell<Arc<Model>>,
+}
+
+impl MistralRsProvider {
+    /// Creates a new mistral.rs provider.
+    ///
+    /// Downloads and loads the model. This may take time on first use.
+    ///
+    /// # Model Resolution
+    ///
+    /// The model comes from `config.llm.model`:
+    ///
+    /// - `"repo:file.gguf"` - HuggingFace GGUF (pre-quantized, fastest)
+    /// - `"/path/file.gguf"` - Local GGUF file
+    /// - `"Repo/Model-ID"` - HuggingFace model (quantizes on load)
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use nucleus::{provider::MistralRsProvider, Config};
+    /// # use nucleus::{PluginRegistry};
+    /// # use std::sync::Arc;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let registry = Arc::new(PluginRegistry::new());
+    /// let mut config = Config::load_or_default();
+    ///
+    /// // Pre-quantized GGUF from HuggingFace (recommended, fastest)
+    /// config.llm.model = "Qwen/Qwen3-0.6B-Instruct-GGUF:qwen3-0_6b-instruct-q4_k_m.gguf".into();
+    /// let provider = MistralRsProvider::new(&config, Arc::clone(&registry)).await?;
+    ///
+    /// // Local GGUF file
+    /// config.llm.model = "./models/qwen3-0.6b.gguf".into();
+    /// let provider = MistralRsProvider::new(&config, Arc::clone(&registry)).await?;
+    ///
+    /// // HuggingFace model (slow, quantizes on load)
+    /// config.llm.model = "Qwen/Qwen3-0.6B-Instruct".into();
+    /// let provider = MistralRsProvider::new(&config, registry).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn new(config: &Config, registry: Arc<PluginRegistry>) -> Result<Self> {
+        let model_name = config.llm.model.clone();
+
+        // Log which backend we're using
+        #[cfg(feature = "metal")]
+        info!("mistral.rs provider initialized with Metal GPU acceleration");
+        #[cfg(all(target_os = "macos", not(feature = "metal")))]
+        warn!("mistral.rs provider running on CPU only - compile with --features metal for GPU acceleration");
+
+        let model = Self::build_model(config.clone(), Arc::clone(&registry)).await?;
+
+        Ok(Self {
+            model: Arc::new(model),
+            model_name,
+            registry,
+            config: config.clone(),
+            embedding_model: OnceCell::new(),
+        })
+    }
+
+    async fn build_model(config: Config, _registry: Arc<PluginRegistry>) -> Result<Model> {
+        let model_name = config.llm.model;
+
+        // Expand tilde in path if present
+        let expanded_path = if model_name.starts_with('~') {
+            let home = std::env::var("HOME").map_err(|_| {
+                ProviderError::Other("HOME environment variable not set".to_string())
+            })?;
+            model_name.replacen('~', &home, 1)
+        } else {
+            model_name.clone()
+        };
+
+        // Detect model type - prioritize local files first
+        let path_obj = Path::new(&expanded_path);
+        let is_local_file = path_obj.exists() && path_obj.is_file();
+
+        let model = if is_local_file {
+            // Local GGUF file (any extension, including Ollama blobs)
+            let dir = path_obj
+                .parent()
+                .ok_or_else(|| ProviderError::Other("Invalid GGUF file path".to_string()))?
+                .to_str()
+                .ok_or_else(|| ProviderError::Other("Invalid UTF-8 in path".to_string()))?;
+            let filename = path_obj
+                .file_name()
+                .ok_or_else(|| ProviderError::Other("Invalid GGUF filename".to_string()))?
+                .to_str()
+                .ok_or_else(|| ProviderError::Other("Invalid UTF-8 in filename".to_string()))?;
+
+            let builder = GgufModelBuilder::new(dir, vec![filename])
+                .with_logging()
+                .with_throughput_logging();
+
+            builder.build().await.map_err(|e| {
+                ProviderError::Other(format!(
+                    "Failed to load local GGUF '{}': {:?}",
+                    model_name, e
+                ))
+            })?
+        } else if model_name.contains(':') {
+            // HuggingFace GGUF format: "Repo/Model-GGUF:filename.gguf"
+            let parts: Vec<&str> = model_name.split(':').collect();
+            if parts.len() != 2 {
+                return Err(ProviderError::Other(
+                    format!("Invalid HuggingFace GGUF format. Expected 'Repo/Model-GGUF:file.gguf', got '{}'" , model_name)
+                ));
+            }
+
+            let builder = GgufModelBuilder::new(parts[0], vec![parts[1]])
+                .with_logging()
+                .with_throughput_logging();
+
+            builder.build().await.map_err(|e| {
+                ProviderError::Other(format!(
+                    "Failed to load GGUF '{}' from HuggingFace: {:?}",
+                    model_name, e
+                ))
+            })?
+        } else {
+            // HuggingFace model (download and quantize on load)
+            let builder = TextModelBuilder::new(&model_name)
+                .with_isq(IsqType::Q4K) // 4-bit quantization
+                .with_logging()
+                .with_throughput_logging();
+
+            builder.build().await.map_err(|e| {
+                ProviderError::Other(format!(
+                    "Failed to load model '{}' from HuggingFace: {:?}",
+                    model_name, e
+                ))
+            })?
+        };
+
+        Ok(model)
+    }
+}
+
+#[async_trait]
+impl Provider for MistralRsProvider {
+    async fn chat<'a>(
+        &'a self,
+        request: ChatRequest,
+        mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
+    ) -> Result<()> {
+        // Build messages using TextMessages builder
+        let mut messages = TextMessages::new();
+
+        for msg in &request.messages {
+            let role = match msg.role.as_str() {
+                "system" => TextMessageRole::System,
+                "user" => TextMessageRole::User,
+                "assistant" => TextMessageRole::Assistant,
+                "tool" => TextMessageRole::Tool,
+                _ => TextMessageRole::User,
+            };
+
+            messages = messages.add_message(role, &msg.content);
+        }
+
+        // Convert to RequestBuilder
+        let mut builder = RequestBuilder::from(messages);
+
+        if let Some(structured_output) = &request.structured_output {
+            // Rebuild messages with schema instructions
+            let mut messages_with_schema = TextMessages::new();
+
+            // Add system message with JSON schema instructions
+            let schema_instructions = format!(
+                "You MUST respond with valid JSON matching this schema:\n{}\n Do NOT wrap it in markdown code fences. Stricly return only the JSON.",
+                serde_json::to_string_pretty(&structured_output.schema).unwrap_or_default()
+            );
+
+            let mut system_message = String::new();
+
+            if let Some(description) = &structured_output.description {
+                system_message.push_str(&format!("{}\n\n", description));
+            }
+
+            if let Some(example) = &structured_output.example {
+                system_message.push_str(&format!(
+                    "Here's an example of the expected format:\n{}\n\n",
+                    serde_json::to_string_pretty(example).unwrap_or_default()
+                ));
+            }
+
+            // Add schema instructions
+            system_message.push_str(&schema_instructions);
+
+            messages_with_schema =
+                messages_with_schema.add_message(TextMessageRole::System, &system_message);
+
+            // Add original messages
+            for msg in &request.messages {
+                let role = match msg.role.as_str() {
+                    "system" => TextMessageRole::System,
+                    "user" => TextMessageRole::User,
+                    "assistant" => TextMessageRole::Assistant,
+                    "tool" => TextMessageRole::Tool,
+                    _ => TextMessageRole::User,
+                };
+                messages_with_schema = messages_with_schema.add_message(role, &msg.content);
+            }
+
+            // Recreate builder with schema-enhanced messages
+            builder = RequestBuilder::from(messages_with_schema);
+        }
+
+        // Convert plugins to mistral.rs tool definitions
+        // Tool calls are returned in the response for nucleus to execute
+        if self.registry.get_count() > 0 {
+            let plugins = self.registry.all();
+            info!(
+                plugin_count = plugins.len(),
+                "Converting plugins to mistral.rs tools"
+            );
+
+            let mistral_tools: Vec<MistralTool> = plugins
+                .into_iter()
+                .map(|plugin| {
+                    let schema = plugin.parameter_schema();
+                    debug!(
+                        tool_name = %plugin.name(),
+                        description = %plugin.description(),
+                        "Processing plugin"
+                    );
+                    debug!(parameters = ?schema, "Plugin parameter schema");
+
+                    // Extract properties from JSON Schema format
+                    // Input: {"type": "object", "properties": {"path": {...}}, "required": [...]}
+                    // Output: HashMap<String, Value> of just the properties
+                    let parameters = if let Some(props) = schema.get("properties") {
+                        if let Some(obj) = props.as_object() {
+                            let extracted = obj.clone().into_iter().collect();
+                            debug!(
+                                properties = ?obj.keys().collect::<Vec<_>>(),
+                                "Extracted tool properties"
+                            );
+                            Some(extracted)
+                        } else {
+                            warn!("Plugin properties field is not an object");
+                            None
+                        }
+                    } else {
+                        debug!("No properties field in schema, using as-is");
+                        serde_json::from_value(schema).ok()
+                    };
+
+                    MistralTool {
+                        tp: ToolType::Function,
+                        function: Function {
+                            name: plugin.name().to_string(),
+                            description: Some(plugin.description().to_string()),
+                            parameters,
+                            // Constrained tool arguments land in Phase 3.
+                            strict: None,
+                        },
+                    }
+                })
+                .collect();
+
+            info!(
+                tool_count = mistral_tools.len(),
+                "Setting tools with ToolChoice::Auto"
+            );
+            builder = builder
+                .set_tools(mistral_tools)
+                .set_tool_choice(ToolChoice::Auto);
+        }
+
+        // Stream request
+        let timeout_duration = std::time::Duration::from_secs(60);
+        let mut stream =
+            tokio::time::timeout(timeout_duration, self.model.stream_chat_request(builder))
+                .await
+                .map_err(|_| {
+                    warn!(
+                        timeout_secs = timeout_duration.as_secs(),
+                        "Stream creation timed out"
+                    );
+                    ProviderError::Other(format!(
+                        "Stream creation timed out after {} seconds.",
+                        timeout_duration.as_secs()
+                    ))
+                })?
+                .map_err(|e| ProviderError::Other(format!("Failed to create stream: {:?}", e)))?;
+
+        let mut accumulated_content = String::new();
+        let mut final_tool_calls = None;
+        let mut message_role = String::from("assistant"); // Default, will be updated from stream
+
+        // Process stream chunks with timeout per chunk to avoid hangs
+        let chunk_timeout = std::time::Duration::from_secs(30);
+        loop {
+            let next_fut = stream.next();
+            let chunk_opt = tokio::time::timeout(chunk_timeout, next_fut)
+                .await
+                .map_err(|_| {
+                    warn!(
+                        "Stream chunk timed out after {} seconds",
+                        chunk_timeout.as_secs()
+                    );
+                    ProviderError::Other(format!(
+                        "No response chunk received after {} seconds. Generation stalled.",
+                        chunk_timeout.as_secs()
+                    ))
+                })?;
+            let Some(chunk) = chunk_opt else {
+                break;
+            };
+            match chunk {
+                Response::Chunk(resp) => {
+                    if let Some(choice) = resp.choices.first() {
+                        // Capture role from stream
+                        message_role = choice.delta.role.clone();
+
+                        // Stream content incrementally
+                        if let Some(content) = &choice.delta.content {
+                            accumulated_content.push_str(content);
+
+                            // Send incremental update to callback
+                            callback(ChatResponse {
+                                model: self.model_name.clone(),
+                                content: content.clone(),
+                                done: false,
+                                message: Message {
+                                    role: message_role.clone(),
+                                    content: accumulated_content.clone(),
+                                    context: None,
+                                    images: None,
+                                    tool_calls: None,
+                                },
+                            });
+                        }
+
+                        // Capture tool calls if present
+                        if let Some(tcs) = &choice.delta.tool_calls {
+                            final_tool_calls = Some(
+                                tcs.iter()
+                                    .map(|tc| super::types::ToolCall {
+                                        function: super::types::ToolCallFunction {
+                                            name: tc.function.name.clone(),
+                                            arguments: serde_json::from_str(&tc.function.arguments)
+                                                .unwrap_or(serde_json::json!({})),
+                                        },
+                                    })
+                                    .collect(),
+                            );
+                        }
+                    }
+                }
+                Response::Done(_) => {
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        // Send final done=true message with captured role
+        callback(ChatResponse {
+            model: self.model_name.clone(),
+            content: accumulated_content.clone(),
+            done: true,
+            message: Message {
+                role: message_role,
+                content: accumulated_content,
+                context: None,
+                images: None,
+                tool_calls: final_tool_calls,
+            },
+        });
+
+        Ok(())
+    }
+
+    async fn embed(&self, text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {
+        let rag = self
+            .config
+            .rag
+            .clone()
+            .ok_or_else(|| ProviderError::Other("RAG is not configured".into()))?;
+        let rag = &rag;
+
+        let embedding_model = self
+            .embedding_model
+            .get_or_try_init(|| async {
+                let model_path: String = match &rag.embedding_model.path {
+                    Some(path) => path.to_string_lossy().into(),
+                    None => rag
+                        .embedding_model
+                        .hf_repo
+                        .clone()
+                        .unwrap_or("Nucleus Registry".to_string()),
+                };
+
+                info!("Loading embedding model from: {}", model_path);
+
+                let model = EmbeddingModelBuilder::new(model_path.clone())
+                    .with_logging()
+                    .with_throughput_logging()
+                    .with_token_source(mistralrs::TokenSource::None)
+                    .build()
+                    .await
+                    .map_err(|e| {
+                        ProviderError::Other(format!(
+                            "Failed to load embedding model from '{}': {:?}\n\n\
+                                Make sure the model exists at that path.",
+                            model_path, e
+                        ))
+                    })?;
+
+                Ok::<Arc<Model>, ProviderError>(Arc::new(model))
+            })
+            .await?;
+
+        // Generate embedding
+        let embedding = embedding_model
+            .generate_embedding(text)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to generate embedding: {:?}", e)))?;
+
+        Ok(embedding)
+    }
+}

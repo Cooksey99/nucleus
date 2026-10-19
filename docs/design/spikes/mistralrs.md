@@ -246,10 +246,55 @@ Spike crate depending only on `mistralrs` plus tokio, anyhow, serde_json and fut
 6. **Batch (local):** concurrent requests on one `Arc<Model>` are verified (~1.5× throughput, bounded by `max_num_seqs`). Paged attention stays off (it hangs at 16).
 7. **Model-string grammar:** the three local forms (path, `repo:file.gguf`, repo) all load. No change needed.
 
+## Phase 1 pin
+
+Date: 2026-10-15. Nucleus now depends on git tag **v0.9.4** behind the `local` feature, not commit `2ed5575`.
+
+What was checked:
+- The current `MistralRsProvider` compiles against that tag. The only API break was `Function.strict: Option<bool>` (left unset). **[verified]** `cargo check --features local,rag,experimental`.
+- v0.9.4's MSRV is 1.94, so that is now the crate `rust-version`. **[verified]** v0.9.4 `Cargo.toml` and a local check on Rust 1.94.
+
+What was not re-run: the 0.8.1 behavior checks (tool-call history, one call per turn, GGUF JSON that never stops, Metal short embeddings, prefix-cache NaNs, paged attention at 16). The spike crate in `spikes/mistralrs` is still `mistralrs = "=0.8.1"`. Those stay open until that spike is pointed at v0.9.4 and run again.
+
+## Phase 1 re-check: spike run against v0.9.4
+
+Date: 2026-10-16. The spike crate in `spikes/mistralrs/` was pointed at git tag **v0.9.4** (it was `=0.8.1`). Same machine and models as above. Outputs are in `spikes/mistralrs/out/*-v094-*.txt`. Local only; no API keys, no paid calls.
+
+Setup notes (what it took to get it running):
+- Pointing the crate at v0.9.4 needed one API fix in the spike: `Function.strict: Option<bool>` (left `None`) — the same break `nucleus` hit (ROADMAP line 174).
+- **New failure: the GGUF chat repo no longer loads by repo id.** `MaziyarPanahi/Qwen3-0.6B-GGUF` ships a `config.json` (the copy in the local cache reads `{"model_type": "mistral"}`). v0.9.4 now reads an external `config.json` in preference to synthesising the config from GGUF metadata (`mistralrs-core/src/pipeline/gguf.rs:630-668`), and that stub is rejected: `Qwen3Loader::model_config … missing field vocab_size`. Loading the identical `.gguf` from a plain directory that contains only the file (no `config.json`) works (`GGUF_REPO=/tmp/qwen3gguf`). **[verified]** `out/tools-v094-metal.txt` (repo id fails), local-dir run (succeeds). All chat checks below therefore ran from the local-dir copy; the only difference is the absent `config.json`.
+
+Verdicts per 0.8.1 finding:
+
+| 0.8.1 finding | v0.9.4 | Evidence |
+|---|---|---|
+| 11 / 2: tool-call history replay silently drops assistant calls | **FIXED** | `out/history-v094-metal.txt` |
+| 2: one tool call per turn | **FIXED** | `out/tools-v094-metal.txt` |
+| 5 / 3: GGUF schema-constrained output never stops (EOS padding to `max_len`) | **FIXED** | `out/json-v094-metal.txt` |
+| 13 / 6: Metal prefix-cache NaN logits | **FIXED (not reproduced)** | `out/thinking-v094-metal.txt`, `out/thinking-v094-metal-nopc.txt` |
+| 13 / 4: Metal short-input embeddings wrong | **UNCHECKED — blocked** | `out/embed-v094-metal.txt` |
+
+Details:
+
+1. **Tool-call history (finding 11) — FIXED.** Repeating the 0.8.1 prompt-token test (`history`): the helper `add_message_with_tool_call` now gives **236** prompt tokens, a plain empty assistant message gives **217**, and the raw `<tool_call>` text gives **236**. On 0.8.1 the helper and the empty message were both 193 (the calls were dropped). The helper now renders the calls, matching the raw-text form. **[verified]** (Source confirms `mistralrs/src/messages.rs:851` writes them under `"tool_calls"`.)
+
+2. **One tool call per turn (finding 2) — FIXED.** Asking for weather *and* time now returns **both** in one turn: `tool_calls` has index 0 `get_weather` and index 1 `get_time`, with thinking on and off. Also fixed: `message.content` is now `null` instead of repeating the raw `<tool_call>` text (the content-leak in finding 2 is gone). **[verified]** `out/tools-v094-metal.txt`.
+
+3. **JSON-schema constrained output that never stops (finding 5) — FIXED.** Same setup (GGUF Q4_K_M + `Constraint::JsonSchema`, 10 prompts, `max_len` 200): raw content parses **10/10**, schema-valid **10/10**, `finish=stop`, **483** completion tokens — against 0/10 raw, 8/10 valid and 2000 tokens (every run hitting `max_len`) on 0.8.1. No `<|endoftext|>` padding. **[verified]** `out/json-v094-metal.txt`. (Unconstrained still fails to parse, as before.)
+
+4. **Metal prefix-cache NaN (finding 6) — FIXED / not reproduced.** `thinking` ran its three requests plus a stream three times with the prefix cache **on**, and once with it off; no "Invalid sampling probability" / NaN error, every request finished (`stop`, or `length` for the long thinking runs). **[verified]** `out/thinking-v094-metal.txt`, `out/thinking-v094-metal-nopc.txt`. Caveat: the first two thinking requests run to `max_len` (600) in both versions, so the reproduction window is unchanged; repeated clean runs are the evidence.
+
+5. **Metal short-input embeddings (finding 4) — UNCHECKED (blocked by a new v0.9.4 bug).** `EmbeddingModelBuilder::new("Qwen/Qwen3-Embedding-0.6B").build()` now **panics** on v0.9.4: `Engine::new` unconditionally calls `pipeline.cache().is_hybrid()` (`mistralrs-core/src/engine/mod.rs:604`), and `EmbeddingPipeline::cache()` is `unreachable!()` (`mistralrs-core/src/pipeline/embedding.rs:789`) → the engine thread dies with "Engine thread exited before reporting readiness". This reproduces with the unchanged `embed` command too, on CPU and Metal, so it is a v0.9.4 regression, not a spike mistake. **[verified]** `out/embed-v094-metal.txt`. Because the embedder cannot be built through the Rust SDK at all, the short-input Metal bug could not be re-measured.
+
+Impact:
+- Four of the five items are now answered: the history fix, parallel tool calls, GGUF JSON termination and the prefix-cache NaN are all resolved at v0.9.4.
+- **New blockers at v0.9.4:** the local embedder cannot be constructed via the SDK (the panic above), and the chat GGUF cannot be loaded by repo id because of the bundled `config.json`. Both should be raised upstream before `local/` relies on v0.9.4. The `config.json` workaround (load the `.gguf` from a plain directory) is confirmed.
+- **Phase 4 (RAG) impact:** the "run the embedder on CPU even with `metal`" mitigation cannot be exercised until the embedding-build panic is worked around, and the Metal short-input question (finding 4) stays open.
+
 ## Open questions
 
 - Will upstream publish 0.9.x to crates.io, and when? Raise it on GitHub.
-- Does v0.9.4 fix the Metal short-input embeddings, the prefix-cache NaN, the paged-attention hang at 16 concurrent requests, and the GGUF EOS padding under JSON constraints? Not tested, because it's a git-only dependency.
+- Does v0.9.4 fix the paged-attention hang at 16 concurrent requests? Not re-run. The tool-call history, parallel calls, GGUF JSON termination and the prefix-cache NaN **are** re-checked under "Phase 1 re-check: v0.9.4" above (all fixed); the short-input Metal embeddings stay open — the v0.9.4 embedding model build panics, so it could not be measured.
 - Linux x86 CPU and CUDA behaviour, and Windows, are untested. The Linux dependency tree resolves without `objc2`.
 - Tool-calling quality on 1.7B or 4B models (only 0.6B was tested).
 - EmbeddingGemma (gated on HF) is untested.
