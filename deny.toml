@@ -16,6 +16,16 @@ ignore = [
     "RUSTSEC-2024-0436",
     "RUSTSEC-2025-0057",
     "RUSTSEC-2025-0119",
+    # zip 8.6.0 advisories (archive extraction: symlink traversal and unsafe
+    # permission/SUID handling). Pulled in by candle-core v0.11.0 (via mistral.rs),
+    # which pins zip "^8.6.0", so we cannot bump to the patched 9.x without an
+    # upstream candle/mistral.rs update. Not applicable to candle's usage: it only
+    # reads model/GGUF archives it shipped, never untrusted user archives, and never
+    # extracts symlinks or relies on extracted file modes.
+    # TODO: remove these ignores once mistral.rs / candle-core allow zip >= 9.0.0.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
 ]
 
 [licenses]
