@@ -20,13 +20,18 @@ use std::collections::HashMap;
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
+    /// Unique document identifier.
     pub id: String,
+    /// The original text content.
     pub content: String,
+    /// The document's vector embedding.
     pub embedding: Vec<f32>,
+    /// Arbitrary string metadata, such as the source path.
     pub metadata: HashMap<String, String>,
 }
 
 impl Document {
+    /// A document with no metadata.
     pub fn new(id: impl Into<String>, content: impl Into<String>, embedding: Vec<f32>) -> Self {
         Self {
             id: id.into(),
@@ -36,6 +41,7 @@ impl Document {
         }
     }
 
+    /// Add a metadata entry.
     pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.metadata.insert(key.into(), value.into());
         self
@@ -57,6 +63,8 @@ impl Document {
 /// In practice, most scores will be between 0.0 and 1.0 for text embeddings.
 #[derive(Debug, Clone)]
 pub struct SearchResult {
+    /// The matching document.
     pub document: Document,
+    /// The similarity score; higher is more similar.
     pub score: f32,
 }

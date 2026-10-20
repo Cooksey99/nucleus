@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
+/// Plugin that searches files for a literal or regular-expression pattern.
 pub struct SearchPlugin;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -46,6 +47,7 @@ impl Default for SearchPlugin {
 }
 
 impl SearchPlugin {
+    /// Create the plugin.
     pub fn new() -> Self {
         Self
     }

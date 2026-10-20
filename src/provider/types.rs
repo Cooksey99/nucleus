@@ -6,13 +6,17 @@ use thiserror::Error;
 
 use crate::models::EmbeddingModel;
 
+/// The backend a provider implementation talks to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderType {
+    /// Local, in-process mistral.rs.
     MistralRs,
+    /// Hosted xAI Grok.
     Grok,
 }
 
 impl ProviderType {
+    /// The provider type's lowercase name, as used in configuration.
     pub fn as_str(&self) -> &'static str {
         match self {
             ProviderType::MistralRs => "mistralrs",
@@ -24,23 +28,29 @@ impl ProviderType {
 /// Errors that can occur when interacting with a provider.
 #[derive(Debug, Error)]
 pub enum ProviderError {
+    /// The HTTP request itself failed.
     #[cfg(feature = "hosted")]
     #[error("HTTP request failed: {0}")]
     Request(#[from] reqwest::Error),
 
+    /// A response body could not be parsed.
     #[error("JSON parsing failed: {0}")]
     Json(#[from] serde_json::Error),
 
+    /// The provider returned an API-level error.
     #[error("API error: {0}")]
     Api(String),
 
+    /// A parameter was invalid for this provider.
     #[error("Invalid parameter: {0}")]
     InvalidParam(String),
 
+    /// Any other provider failure.
     #[error("Provider error: {0}")]
     Other(String),
 }
 
+/// Result type for provider operations.
 pub type Result<T> = std::result::Result<T, ProviderError>;
 
 /// Provider trait for LLM backends.
@@ -75,15 +85,22 @@ pub trait Provider: Send + Sync {
 /// Request for chat completion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRequest {
+    /// Model identifier.
     pub model: String,
+    /// Conversation messages to send.
     pub messages: Vec<Message>,
+    /// Sampling temperature.
     pub temperature: f64,
+    /// Tools the model may call.
     pub tools: Option<Vec<Tool>>,
+    /// Requested structured output.
     pub structured_output: Option<StructuredOutput>,
+    /// Reasoning effort, where the provider supports it.
     pub reasoning_effort: Option<String>,
 }
 
 impl ChatRequest {
+    /// A request for `model` carrying `messages`.
     pub fn new(model: impl Into<String>, messages: Vec<Message>) -> Self {
         Self {
             model: model.into(),
@@ -95,21 +112,25 @@ impl ChatRequest {
         }
     }
 
+    /// Ask for a structured output.
     pub fn with_structured_output(mut self, structured_output: StructuredOutput) -> Self {
         self.structured_output = Some(structured_output);
         self
     }
 
+    /// Set the sampling temperature.
     pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.temperature = temperature;
         self
     }
 
+    /// Set the tools the model may call.
     pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = Some(tools);
         self
     }
 
+    /// Set the reasoning effort.
     pub fn with_reasoning_effort(mut self, effort: impl Into<String>) -> Self {
         self.reasoning_effort = Some(effort.into());
         self
@@ -119,29 +140,37 @@ impl ChatRequest {
 /// Response from chat completion (streaming chunk).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
+    /// Model that produced the chunk.
     pub model: String,
+    /// Text content of the chunk.
     pub content: String,
+    /// Whether this is the final chunk of the stream.
     pub done: bool,
+    /// The message this chunk belongs to.
     pub message: Message,
 }
 
 /// A single message in a chat conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
+    /// Role name, e.g. `"user"`, `"assistant"`, `"system"`, `"tool"`.
     pub role: String,
     /// Context, generally pulled from RAG
     pub context: Option<String>,
     /// Message input from the user
     pub content: String,
 
+    /// Base64 image payloads attached to the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
 
+    /// Tool calls the assistant requested.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 impl Message {
+    /// A system message.
     pub fn system(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "system".to_string(),
@@ -152,6 +181,7 @@ impl Message {
         }
     }
 
+    /// A user message.
     pub fn user(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "user".to_string(),
@@ -162,6 +192,7 @@ impl Message {
         }
     }
 
+    /// An assistant message.
     pub fn assistant(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "assistant".to_string(),
@@ -172,6 +203,7 @@ impl Message {
         }
     }
 
+    /// A tool-result message.
     pub fn tool(context: Option<String>, content: impl Into<String>) -> Self {
         Self {
             role: "tool".to_string(),
@@ -186,48 +218,61 @@ impl Message {
 /// Tool specification for function calling.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
+    /// Always `"function"`.
     #[serde(rename = "type")]
     pub tool_type: String,
+    /// The function definition.
     pub function: ToolFunction,
 }
 
 /// Function definition within a tool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolFunction {
+    /// The model-facing function name.
     pub name: String,
+    /// What the function does.
     pub description: String,
+    /// JSON Schema for the function's arguments.
     pub parameters: serde_json::Value,
 }
 
 /// Tool call requested by the LLM.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
+    /// The function being called and its arguments.
     pub function: ToolCallFunction,
 }
 
 /// Function call details.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallFunction {
+    /// The function name.
     pub name: String,
+    /// The function's arguments as JSON.
     pub arguments: serde_json::Value,
 }
 
 /// Request for generating embeddings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbedRequest {
+    /// Embedding model identifier.
     pub model: String,
+    /// The text to embed.
     pub input: String,
 }
 
 /// Response containing embeddings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbedResponse {
+    /// Embedding model identifier.
     pub model: String,
 
+    /// One embedding vector per input.
     #[serde(default)]
     pub embeddings: Vec<Vec<f32>>,
 }
 
+/// Requested structured output for a hosted call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructuredOutput {
     /// JSON schema to define the expected output structure
@@ -241,6 +286,7 @@ pub struct StructuredOutput {
 }
 
 impl StructuredOutput {
+    /// A structured output driven by `schema`.
     pub fn new(schema: serde_json::Value) -> Self {
         Self {
             schema,
@@ -249,11 +295,13 @@ impl StructuredOutput {
         }
     }
 
+    /// Attach a description of the output.
     pub fn with_description(mut self, description: String) -> Self {
         self.description = Some(description);
         self
     }
 
+    /// Attach an example of the expected output.
     pub fn with_example(mut self, example: serde_json::Value) -> Self {
         self.example = Some(example);
         self

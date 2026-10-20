@@ -1,3 +1,5 @@
+//! Configuration types loaded from `config.yaml`.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -5,15 +7,19 @@ use thiserror::Error;
 
 use crate::models::EmbeddingModel;
 
+/// Errors from loading or parsing a [`Config`].
 #[derive(Debug, Error)]
 pub enum ConfigError {
+    /// The config file could not be read.
     #[error("Failed to read config file: {0}")]
     FileRead(#[from] std::io::Error),
 
+    /// The config file was not valid YAML for [`Config`].
     #[error("Failed to parse config: {0}")]
     Parse(#[from] serde_yaml::Error),
 }
 
+/// Result type for config operations.
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
 /// Configuration for the entire chat/agent
@@ -21,9 +27,13 @@ pub type Result<T> = std::result::Result<T, ConfigError>;
 /// This includes the LLM model itself, as well as the features and customization you want it have
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    /// System prompt prepended to every conversation.
     pub system_prompt: String,
+    /// LLM provider and model settings.
     pub llm: LlmConfig,
+    /// Retrieval settings. `None` disables retrieval.
     pub rag: Option<RagConfig>,
+    /// Vector store settings.
     pub storage: StorageConfig,
 }
 
@@ -33,11 +43,15 @@ pub struct LlmConfig {
     /// Provider type: "mistralrs" or "grok"
     #[serde(default = "default_provider")]
     pub provider: String,
+    /// Model identifier understood by the selected provider.
     pub model: String,
+    /// Provider base URL.
     pub base_url: String,
+    /// Sampling temperature (0.0-2.0).
     pub temperature: f64,
+    /// Maximum context length in tokens.
     pub context_length: usize,
-    // API key for bearer token for hosted providers
+    /// API key for the bearer token used by hosted providers.
     #[serde(default)]
     pub api_key: Option<String>,
 }
@@ -51,7 +65,9 @@ fn default_provider() -> String {
 /// This covers embedding settings and text processing behavior (chunking, indexing).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RagConfig {
+    /// The embedding model used to vectorize documents and queries.
     pub embedding_model: EmbeddingModel,
+    /// File indexing behaviour.
     #[serde(default)]
     pub indexer: IndexerConfig,
 }
@@ -100,7 +116,10 @@ impl Default for IndexerConfig {
 #[serde(tag = "mode", rename_all = "lowercase")]
 pub enum StorageMode {
     /// Embedded LanceDB storage. Runs in-process.
-    Embedded { path: String },
+    Embedded {
+        /// Filesystem path for the embedded database.
+        path: String,
+    },
 }
 
 impl Default for StorageMode {

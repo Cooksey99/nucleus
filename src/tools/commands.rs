@@ -18,6 +18,7 @@ pub struct ExecParams {
     env: HashMap<String, String>,
 }
 
+/// Plugin that runs a shell command and returns its stdout, stderr and exit code.
 pub struct ExecPlugin {}
 
 impl Default for ExecPlugin {
@@ -27,10 +28,12 @@ impl Default for ExecPlugin {
 }
 
 impl ExecPlugin {
+    /// Create the plugin.
     pub fn new() -> Self {
         Self {}
     }
 
+    /// Run `command` with `args` in `cwd`.
     pub async fn run(
         &self,
         command: String,

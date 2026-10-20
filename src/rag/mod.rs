@@ -57,18 +57,23 @@ use std::sync::Arc;
 use store::{create_vector_store, VectorStore};
 use thiserror::Error;
 
+/// Errors from RAG operations.
 #[derive(Debug, Error)]
 pub enum RagError {
+    /// The embedder failed.
     #[error("Embedder error: {0}")]
     Embedder(#[from] embedder::EmbedderError),
 
+    /// The indexer failed.
     #[error("Indexer error: {0}")]
     Indexer(#[from] indexer::IndexerError),
 
+    /// Context retrieval failed.
     #[error("Failed to retrieve context: {0}")]
     Retrieval(String),
 }
 
+/// Result type for RAG operations.
 pub type Result<T> = std::result::Result<T, RagError>;
 
 /// The main RAG manager orchestrating all components.
@@ -528,6 +533,7 @@ impl RagEngine {
         Ok(removed)
     }
 
+    /// Remove every document from the knowledge base.
     pub async fn clear_knowledge_base(&self) {
         let _ = self.store.clear().await;
     }

@@ -290,6 +290,7 @@ pub async fn access_token() -> Result<String> {
     Ok(access)
 }
 
+/// Hosted provider for the xAI Grok API.
 #[derive(Debug, Clone)]
 pub struct GrokProvider {
     client: Client,
@@ -300,6 +301,11 @@ pub struct GrokProvider {
 }
 
 impl GrokProvider {
+    /// Build a Grok provider from configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] when no API key or login is available.
     pub fn new(config: &Config) -> Result<Self> {
         let api_key = config
             .llm
@@ -408,6 +414,11 @@ impl GrokProvider {
         Ok(saw)
     }
 
+    /// The bearer token to send with requests.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] when no token can be obtained.
     pub async fn bearer_token(&self) -> Result<String> {
         if let Some(key) = &self.api_key {
             return Ok(key.clone());
@@ -424,10 +435,12 @@ impl GrokProvider {
         }
     }
 
+    /// The provider's base URL.
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
 
+    /// The configured model name.
     pub fn model(&self) -> &str {
         &self.model
     }

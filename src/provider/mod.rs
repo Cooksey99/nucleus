@@ -8,6 +8,7 @@ mod factory;
 pub mod grok;
 #[cfg(feature = "local")]
 pub mod mistralrs;
+pub mod mock;
 mod types;
 
 // Re-export common types
