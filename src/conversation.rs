@@ -149,4 +149,23 @@ mod tests {
     fn ids_are_distinct() {
         assert_ne!(ConversationId::new(), ConversationId::new());
     }
+
+    #[test]
+    fn history_is_append_only() {
+        // The only mutator is `push`; there is no API to edit or remove a
+        // message that was already sent, so earlier messages are unchanged
+        // after later appends.
+        let mut conversation = Conversation::new();
+        conversation.push(Message::user("first"));
+        let first_text = conversation.messages()[0].text();
+
+        conversation.push(Message::assistant_text("second"));
+        conversation.push(Message::user("third"));
+
+        assert_eq!(conversation.messages().len(), 3);
+        assert_eq!(conversation.messages()[0].text(), first_text);
+        assert_eq!(conversation.messages()[0].text(), "first");
+        assert_eq!(conversation.messages()[1].text(), "second");
+        assert_eq!(conversation.messages()[2].text(), "third");
+    }
 }

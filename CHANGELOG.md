@@ -11,14 +11,18 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - CI workflow (`.github/workflows/ci.yml`): build, test and doctest on Linux and macOS.
 - Feature flags: `hosted` (default), `std` (default), `local`, `rag`, `lancedb`, `mcp` (empty until Phase 5), `experimental`, `metal`, and `cuda`.
 - Phase 1 CI gates: clippy `-D warnings`, rustfmt, cargo-deny, an MSRV check, and `cargo hack --each-feature` (excluding `metal` and `cuda`).
+- Phase 2 message model and conversation storage (`src/message.rs`, `src/conversation.rs`, `src/store.rs`): the ordered `Part` list with raw-JSON tool-call input and tagged `ProviderItem`s, a stable `ConversationId` with append-only history and serde save/resume, and an always-compiled in-memory `MemoryStore` for tests.
+- Phase 2 error, usage and options types: the `#[non_exhaustive]` `nucleus::Error` with a `ProviderError`/`RequestId` on every provider failure, `Usage`/`Cost` with cache-read and cache-write tokens and an overridable `PriceTable`/`ModelPrice` for cost from a price table, `StopReason`, and the `RunOptions` set (`Effort`, `Thinking`, `ThinkingDisplay`, `CacheTtl`, `provider_options`/`provider_headers`).
 
 ### Changed
+- Approve the Phase 2 design note (`docs/design/core-api.md`), settling its open questions (model-string grammar, Anthropic prefix changes, `Usage` cost, `MemoryStore`, batch shape, `AgentSpec` tool resolution, hook naming, error/event serde depth and the `local/` thinking default).
 - Merge `nucleus-core`, `nucleus-plugin`, and `nucleus-std` into the `nucleus` crate. Built-in tools stay behind the `std` feature.
 - Minimum supported Rust version is 1.94. Edition stays 2021.
 - reqwest 0.13, with rustls. Grok account login is behind `experimental`.
 - mistral.rs is the v0.9.4 git tag, behind `local`. The default build no longer depends on it or on LanceDB.
 
 ### Removed
+- Slash commands (`/help`, `/reset`, `/exit`) leave the library and belong to apps; the reset primitive is `Conversation::clear()`.
 - The plugin `Permission` system. Registration is synchronous and always succeeds. An approval hook comes later.
 - CoreML (archived on `archive/coreml`), the IPC server, Ollama, Qdrant, `ModelRegistry`, `nucleus-dev`, and the CLI stubs other than `login` and `logout`.
 - Unused config: CoreML feature names, personalization, chat-history and tool-state paths, and the Qdrant gRPC storage mode.

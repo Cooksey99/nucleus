@@ -49,7 +49,7 @@ pub mod utils;
 pub use types::{Document, SearchResult};
 
 use crate::config::Config;
-use crate::provider::Provider;
+use crate::provider::types::Provider;
 use embedder::Embedder;
 use indexer::Indexer;
 use std::path::Path;
@@ -107,7 +107,8 @@ impl RagEngine {
     /// # Example
     ///
     /// ```no_run
-    /// # use nucleus::{Config, Provider, RagEngine};
+    /// # use nucleus::{Config, RagEngine};
+    /// # use nucleus::provider::types::Provider;
     /// # use std::sync::Arc;
     /// # async fn example(provider: Arc<dyn Provider>) -> anyhow::Result<()> {
     /// let config = Config::load_or_default();

@@ -153,6 +153,16 @@ pub struct ToolOutput {
     pub structured: Option<serde_json::Value>,
 }
 
+impl ToolOutput {
+    /// A text-only output: what the model reads, with no structured form.
+    pub fn text(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            structured: None,
+        }
+    }
+}
+
 /// A source citation for a [`Part::Knowledge`]. Line ranges are 1-based and
 /// inclusive; a whole-file citation has `start_line == 1` and `end_line == 0`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,6 +200,12 @@ pub struct ProviderItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::value::RawValue;
+
+    /// A `RawValue` from a literal, for tests.
+    fn raw(json: &str) -> Box<RawValue> {
+        RawValue::from_string(json.to_string()).expect("valid raw json")
+    }
 
     #[test]
     fn text_concatenates_only_text_parts() {
@@ -216,5 +232,122 @@ mod tests {
         let message = Message::user("hi");
         assert_eq!(message.role, Role::User);
         assert_eq!(message.text(), "hi");
+    }
+
+    #[test]
+    fn part_order_survives_serde_round_trip() {
+        let message = Message::parts(
+            Role::Assistant,
+            vec![
+                Part::Reasoning {
+                    text: "think".to_string(),
+                    summary: false,
+                },
+                Part::Text {
+                    text: "answer".to_string(),
+                },
+                Part::ToolCall {
+                    id: ToolCallId("call_1".to_string()),
+                    name: "search".to_string(),
+                    input: raw(r#"{"query":"rust"}"#),
+                },
+                Part::ToolResult {
+                    call_id: ToolCallId("call_1".to_string()),
+                    output: ToolOutput {
+                        content: "ok".to_string(),
+                        structured: None,
+                    },
+                    is_error: false,
+                },
+                Part::Knowledge {
+                    text: "excerpt".to_string(),
+                    sources: vec![KnowledgeSource {
+                        file: "src/lib.rs".to_string(),
+                        start_line: 1,
+                        end_line: 10,
+                    }],
+                },
+                Part::Provider(ProviderItem {
+                    dialect: "anthropic".to_string(),
+                    model: "claude".to_string(),
+                    kind: "thinking".to_string(),
+                    prefix_fingerprint: String::new(),
+                    raw: raw(r#"{"type":"thinking"}"#),
+                }),
+            ],
+        );
+
+        let json = serde_json::to_string(&message).expect("serializes");
+        let back: Message = serde_json::from_str(&json).expect("deserializes");
+
+        assert_eq!(back.parts.len(), 6);
+        assert!(matches!(back.parts[0], Part::Reasoning { .. }));
+        assert!(matches!(back.parts[1], Part::Text { .. }));
+        assert!(matches!(back.parts[2], Part::ToolCall { .. }));
+        assert!(matches!(back.parts[3], Part::ToolResult { .. }));
+        assert!(matches!(back.parts[4], Part::Knowledge { .. }));
+        assert!(matches!(back.parts[5], Part::Provider(_)));
+        assert_eq!(serde_json::to_string(&back).expect("reserializes"), json);
+    }
+
+    #[test]
+    fn tool_call_raw_json_replays_byte_for_byte() {
+        // Deliberately odd key order and whitespace: the bytes must survive.
+        let original = r#"{"z":1,   "a":[1, 2,  3], "nested":{"k":"v"}}"#;
+        let message = Message::parts(
+            Role::Assistant,
+            vec![Part::ToolCall {
+                id: ToolCallId("call_1".to_string()),
+                name: "search".to_string(),
+                input: raw(original),
+            }],
+        );
+
+        let json = serde_json::to_string(&message).expect("serializes");
+        let back: Message = serde_json::from_str(&json).expect("deserializes");
+
+        let (_, name, input) = back.tool_calls().next().expect("one tool call");
+        assert_eq!(name, "search");
+        assert_eq!(input, original);
+    }
+
+    #[test]
+    fn knowledge_part_citations_survive_serde_round_trip() {
+        let message = Message::parts(
+            Role::User,
+            vec![Part::Knowledge {
+                text: "retrieved excerpt".to_string(),
+                sources: vec![
+                    KnowledgeSource {
+                        file: "src/a.rs".to_string(),
+                        start_line: 3,
+                        end_line: 7,
+                    },
+                    // A whole-file citation: start_line == 1, end_line == 0.
+                    KnowledgeSource {
+                        file: "docs/b.md".to_string(),
+                        start_line: 1,
+                        end_line: 0,
+                    },
+                ],
+            }],
+        );
+
+        let json = serde_json::to_string(&message).expect("serializes");
+        let back: Message = serde_json::from_str(&json).expect("deserializes");
+
+        match &back.parts[0] {
+            Part::Knowledge { text, sources } => {
+                assert_eq!(text, "retrieved excerpt");
+                assert_eq!(sources.len(), 2);
+                assert_eq!(sources[0].file, "src/a.rs");
+                assert_eq!(sources[0].start_line, 3);
+                assert_eq!(sources[0].end_line, 7);
+                assert_eq!(sources[1].file, "docs/b.md");
+                assert_eq!(sources[1].start_line, 1);
+                assert_eq!(sources[1].end_line, 0);
+            }
+            other => panic!("expected a knowledge part, got {other:?}"),
+        }
     }
 }

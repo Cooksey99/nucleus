@@ -178,4 +178,130 @@ mod tests {
         let back: Error = serde_json::from_str(&json).expect("deserializes");
         assert!(matches!(back, Error::RateLimited(_)));
     }
+
+    #[test]
+    fn rate_limited_preserves_retry_after() {
+        let error = Error::RateLimited(Retryable {
+            error: ProviderError {
+                request_id: Some(RequestId("req_2".to_string())),
+                status: Some(429),
+                code: None,
+                message: "slow down".to_string(),
+                retryable: true,
+            },
+            retry_after: Some(2.75),
+        });
+
+        let json = serde_json::to_string(&error).expect("serializes");
+        let back: Error = serde_json::from_str(&json).expect("deserializes");
+        let Error::RateLimited(retryable) = back else {
+            unreachable!("round-trip keeps the kind");
+        };
+        assert_eq!(retryable.retry_after, Some(2.75));
+    }
+
+    #[test]
+    fn every_provider_error_kind_round_trips() {
+        fn provider(id: &str) -> ProviderError {
+            ProviderError {
+                request_id: Some(RequestId(id.to_string())),
+                status: Some(500),
+                code: Some("boom".to_string()),
+                message: "boom".to_string(),
+                retryable: true,
+            }
+        }
+
+        let kinds = vec![
+            Error::Refused(Refusal {
+                category: Some("safety".to_string()),
+                explanation: None,
+                error: provider("r0"),
+            }),
+            Error::ContentPolicy(Refusal {
+                category: None,
+                explanation: Some("blocked".to_string()),
+                error: provider("r1"),
+            }),
+            Error::Overloaded(Retryable {
+                error: provider("r2"),
+                retry_after: None,
+            }),
+            Error::Timeout(Retryable {
+                error: provider("r3"),
+                retry_after: Some(30.0),
+            }),
+            Error::Truncated(Truncation {
+                reason: crate::event::StopReason::MaxTokens,
+                partial: "partial".to_string(),
+                error: provider("r4"),
+            }),
+            Error::Auth(provider("r5")),
+            Error::Billing(provider("r6")),
+            Error::InvalidRequest(provider("r7")),
+            Error::Provider(provider("r8")),
+            Error::Unsupported {
+                feature: "batch".to_string(),
+                provider: "gloo".to_string(),
+                model: Some("m".to_string()),
+            },
+            Error::NotReady,
+            Error::BatchNotResumable,
+            Error::Store("store".to_string()),
+            Error::Serialization("json".to_string()),
+            Error::Io("file".to_string()),
+        ];
+
+        for error in kinds {
+            let json = serde_json::to_string(&error).expect("serializes");
+            let back: Error = serde_json::from_str(&json).expect("deserializes");
+            assert_eq!(
+                std::mem::discriminant(&error),
+                std::mem::discriminant(&back)
+            );
+        }
+    }
+
+    #[test]
+    fn request_id_propagates_through_the_tool_source_chain() {
+        let inner = Error::Provider(ProviderError {
+            request_id: Some(RequestId("req_tool".to_string())),
+            status: Some(503),
+            code: None,
+            message: "down".to_string(),
+            retryable: true,
+        });
+        let error = Error::Tool {
+            name: "search".to_string(),
+            source: Box::new(inner),
+        };
+
+        let source = std::error::Error::source(&error).expect("the tool error has a source");
+        // `thiserror` exposes a `Box<Error>` source field as the box itself, so
+        // the structured inner error is reached by downcasting to `Box<Error>`.
+        let inner = source
+            .downcast_ref::<Box<Error>>()
+            .expect("the source is the wrapped error");
+        let Error::Provider(provider) = inner.as_ref() else {
+            unreachable!("the wrapped error keeps its kind");
+        };
+        assert_eq!(provider.request_id, Some(RequestId("req_tool".to_string())));
+    }
+
+    #[test]
+    fn request_id_survives_serialization() {
+        let error = Error::Auth(ProviderError {
+            request_id: Some(RequestId("req_auth".to_string())),
+            status: Some(401),
+            code: Some("invalid_api_key".to_string()),
+            message: "no".to_string(),
+            retryable: false,
+        });
+        let json = serde_json::to_string(&error).expect("serializes");
+        let back: Error = serde_json::from_str(&json).expect("deserializes");
+        let Error::Auth(provider) = back else {
+            unreachable!("round-trip keeps the kind");
+        };
+        assert_eq!(provider.request_id, Some(RequestId("req_auth".to_string())));
+    }
 }

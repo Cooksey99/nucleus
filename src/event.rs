@@ -9,6 +9,8 @@
 //!
 //! See `docs/design/core-api.md` §5 for the full design.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
@@ -155,6 +157,82 @@ pub enum CostSource {
     PriceTable,
 }
 
+/// Per-model prices in USD per 1M tokens. Apps override the built-in table.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PriceTable {
+    entries: BTreeMap<String, ModelPrice>,
+}
+
+/// The price of one model, in USD per 1M tokens, with cache multipliers.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ModelPrice {
+    /// Input (prompt) price in USD per 1M tokens.
+    pub input_per_million: f64,
+    /// Output (completion) price in USD per 1M tokens.
+    pub output_per_million: f64,
+    /// Multiplier applied to `input_per_million` for a cache read.
+    pub cache_read_multiplier: f64,
+    /// Multiplier for a 5-minute cache write.
+    pub cache_write_multiplier: f64,
+    /// Multiplier for a 1-hour cache write.
+    pub cache_write_1h_multiplier: f64,
+}
+
+impl PriceTable {
+    /// An empty table.
+    ///
+    /// Nothing is guessed: an unknown model has no price, so [`PriceTable::cost`]
+    /// returns `None`. The public Gloo catalog (`GET /platform/v2/models`, no
+    /// auth) can seed this table, and apps override it with [`PriceTable::with`].
+    pub fn builtin() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+        }
+    }
+
+    /// Return a copy with `model`'s price set, replacing any existing entry.
+    pub fn with(mut self, model: &str, price: ModelPrice) -> Self {
+        self.entries.insert(model.to_string(), price);
+        self
+    }
+
+    /// The price for `model`, when the table knows it.
+    pub fn get(&self, model: &str) -> Option<ModelPrice> {
+        self.entries.get(model).copied()
+    }
+
+    /// Compute the cost of `usage` for `model` from the table's prices.
+    ///
+    /// `input_tokens` is treated as including cache-read tokens (Responses
+    /// semantics, §5.2), and the cache counts are clamped so a provider that
+    /// reports `cached > input` never yields a negative. Returns `None` for a
+    /// model the table does not know — never guess. The batch discount and the
+    /// Gloo platform fee are applied by the caller, not here.
+    pub fn cost(&self, model: &str, usage: &Usage) -> Option<Cost> {
+        let price = self.get(model)?;
+
+        let cache_read = usage.cache_read_tokens.unwrap_or(0).min(usage.input_tokens);
+        let base_input = usage.input_tokens - cache_read;
+        let cache_write = usage.cache_write_tokens.unwrap_or(0);
+        let cache_write_1h = usage.cache_write_1h_tokens.unwrap_or(0);
+
+        let input_units = base_input as f64
+            + cache_read as f64 * price.cache_read_multiplier
+            + cache_write as f64 * price.cache_write_multiplier
+            + cache_write_1h as f64 * price.cache_write_1h_multiplier;
+        let usd = (input_units * price.input_per_million
+            + usage.output_tokens as f64 * price.output_per_million)
+            / 1_000_000.0;
+
+        Some(Cost {
+            usd,
+            source: CostSource::PriceTable,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +251,80 @@ mod tests {
         };
         let json = serde_json::to_string(&event).expect("serializes");
         assert!(json.contains("TextDelta"));
+    }
+
+    fn price() -> ModelPrice {
+        ModelPrice {
+            input_per_million: 3.0,
+            output_per_million: 15.0,
+            cache_read_multiplier: 0.1,
+            cache_write_multiplier: 1.25,
+            cache_write_1h_multiplier: 2.0,
+        }
+    }
+
+    #[test]
+    fn price_table_is_overridable() {
+        let table = PriceTable::builtin().with("anthropic/claude-sonnet-5", price());
+        assert!(table.get("anthropic/claude-sonnet-5").is_some());
+        assert!(table.get("anthropic/unknown").is_none());
+    }
+
+    #[test]
+    fn cost_uses_cache_read_and_write_tokens() {
+        let table = PriceTable::builtin().with("m", price());
+        let usage = Usage {
+            input_tokens: 1_000_000,
+            output_tokens: 100_000,
+            cache_read_tokens: Some(200_000),
+            cache_write_tokens: Some(100_000),
+            cache_write_1h_tokens: Some(0),
+            ..Usage::default()
+        };
+
+        let cost = table.cost("m", &usage).expect("a known model");
+        assert_eq!(cost.source, CostSource::PriceTable);
+        // 800k base + 200k*0.1 read + 100k*1.25 write = 945k units at $3/M
+        // = $2.835; output 100k at $15/M = $1.5; total $4.335.
+        assert!((cost.usd - 4.335).abs() < 1e-9, "got {}", cost.usd);
+    }
+
+    #[test]
+    fn cost_clamps_cache_read_above_input() {
+        let table = PriceTable::builtin().with("m", price());
+        let usage = Usage {
+            input_tokens: 100,
+            cache_read_tokens: Some(500),
+            ..Usage::default()
+        };
+        let cost = table.cost("m", &usage).expect("a known model");
+        assert!(cost.usd >= 0.0);
+        // All 100 input tokens are cache reads: 100 * 0.1 = 10 units at $3/M.
+        assert!((cost.usd - 0.000_03).abs() < 1e-12, "got {}", cost.usd);
+    }
+
+    #[test]
+    fn cost_is_none_for_an_unknown_model() {
+        assert!(PriceTable::builtin().cost("m", &Usage::default()).is_none());
+    }
+
+    #[test]
+    fn usage_round_trips_with_cost() {
+        let usage = Usage {
+            input_tokens: 10,
+            output_tokens: 20,
+            cost: Some(Cost {
+                usd: 1.5,
+                source: CostSource::Provider,
+            }),
+            batch: true,
+            ..Usage::default()
+        };
+        let json = serde_json::to_string(&usage).expect("serializes");
+        let back: Usage = serde_json::from_str(&json).expect("deserializes");
+        assert_eq!(back.input_tokens, 10);
+        assert!(back.batch);
+        let cost = back.cost.expect("cost survives");
+        assert_eq!(cost.source, CostSource::Provider);
     }
 }
