@@ -3,13 +3,13 @@
 //!
 //! Batch support is a set of optional [`Provider`] methods that default to
 //! `Unsupported`; support is reported per model in
-//! [`Capabilities::batch`](crate::provider::Capabilities::batch). The types here
-//! are the serializable, versioned handle shape, so a handle can be saved and a
-//! batch resumed later. The provider implementations arrive in Phase 3.
+//! [`Capabilities::batch`](crate::provider::Capabilities::batch). The types are
+//! the serializable, versioned handle shape, so a handle can be saved and a
+//! batch resumed later.
 //!
 //! [`Provider`]: crate::provider::Provider
 //!
-//! See `docs/design/core-api.md` §10.2 and `docs/design/spikes/batch.md` §6.
+//! See `docs/design/core-api.md` §10.2.
 
 use serde::{Deserialize, Serialize};
 
@@ -35,7 +35,7 @@ pub struct BatchRequest {
 /// A serializable, versioned handle to a submitted batch.
 ///
 /// Credentials are never stored here; resuming takes the handle plus the same
-/// provider configuration. `version` lets the shape change later.
+/// provider configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct BatchHandle {

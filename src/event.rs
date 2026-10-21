@@ -184,8 +184,8 @@ impl PriceTable {
     /// An empty table.
     ///
     /// Nothing is guessed: an unknown model has no price, so [`PriceTable::cost`]
-    /// returns `None`. The public Gloo catalog (`GET /platform/v2/models`, no
-    /// auth) can seed this table, and apps override it with [`PriceTable::with`].
+    /// returns `None`. The Gloo catalog (`GET /platform/v2/models`) can seed it,
+    /// and apps override entries with [`PriceTable::with`].
     pub fn builtin() -> Self {
         Self {
             entries: BTreeMap::new(),
@@ -205,11 +205,10 @@ impl PriceTable {
 
     /// Compute the cost of `usage` for `model` from the table's prices.
     ///
-    /// `input_tokens` is treated as including cache-read tokens (Responses
-    /// semantics, §5.2), and the cache counts are clamped so a provider that
-    /// reports `cached > input` never yields a negative. Returns `None` for a
-    /// model the table does not know — never guess. The batch discount and the
-    /// Gloo platform fee are applied by the caller, not here.
+    /// `input_tokens` includes cache-read tokens (Responses semantics, §5.2);
+    /// cache counts are clamped so `cached > input` never yields a negative.
+    /// Returns `None` for an unknown model — never guess. The caller applies the
+    /// batch discount and platform fee.
     pub fn cost(&self, model: &str, usage: &Usage) -> Option<Cost> {
         let price = self.get(model)?;
 

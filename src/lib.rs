@@ -76,9 +76,8 @@ pub use provider::{
     BatchSupport, Capabilities, ChatRequest, EmbedRequest, EmbedResponse, ModelString,
     ProviderKind, ThinkingSupport, ToolChoice, ToolSpec,
 };
-// `Provider::chat_stream` returns `EventStream`, which needs the optional
-// `futures` crate, so the trait carries the same feature gate as `EventStream`
-// (above) and is absent from a build with neither `hosted` nor `lancedb`.
+// `Provider::chat_stream` returns `EventStream`, so the trait carries the same
+// feature gate and is absent from a build with neither `hosted` nor `lancedb`.
 #[cfg(any(feature = "hosted", feature = "lancedb"))]
 pub use provider::Provider;
 // The model-facing tool trait and its adapters, and the legacy plugin surface.

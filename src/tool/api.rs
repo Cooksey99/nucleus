@@ -3,9 +3,8 @@
 //!
 //! A tool is the extension point the model calls. Its schema is the **whole**
 //! JSON Schema for the arguments (not just `properties`), and `call` takes the
-//! raw JSON the model produced. [`tool_fn`] adapts an ordinary function with
-//! typed arguments, whose [`schemars::JsonSchema`] derive produces the schema
-//! and whose raw JSON is deserialized before the call.
+//! raw JSON the model produced. [`tool_fn`] adapts a function with typed
+//! arguments, deriving the schema and deserializing the raw JSON before the call.
 //!
 //! See `docs/design/core-api.md` §7.1 for the full design.
 
@@ -109,8 +108,7 @@ impl ToolContext {
 /// Wrap a plain async function as a [`Tool`].
 ///
 /// The argument type derives [`schemars::JsonSchema`], whose schema becomes the
-/// tool's parameters, and the raw JSON is deserialized into it before the call,
-/// so a mistyped `serde_json::json!` cannot reach a typed handler.
+/// tool's parameters, and the raw JSON is deserialized into it before the call.
 ///
 /// ```no_run
 /// # use nucleus::{tool_fn, ToolOutput};

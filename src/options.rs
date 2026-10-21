@@ -74,10 +74,9 @@ pub struct RunOptions {
 impl RunOptions {
     /// Placeholder for the per-model thinking capability check.
     ///
-    /// The real table (`Capabilities::thinking`) arrives with the provider
-    /// traits; until then the caller passes whether the model can turn thinking
-    /// off. On a model that cannot, [`Thinking::Off`] is rejected with
-    /// [`Error::InvalidRequest`] before anything is sent.
+    /// The caller passes whether the model can turn thinking off. On a model
+    /// that cannot, [`Thinking::Off`] is rejected with [`Error::InvalidRequest`]
+    /// before anything is sent.
     ///
     /// # Errors
     ///

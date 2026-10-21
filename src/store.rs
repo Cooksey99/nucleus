@@ -50,9 +50,7 @@ pub trait ConversationStore: Send + Sync {
 /// An in-memory [`ConversationStore`].
 ///
 /// Conversations live for as long as the store does and are lost when it is
-/// dropped. Always compiled (no feature gate), so tests and short-lived
-/// sessions can exercise save/resume without a file or SQLite backend
-/// (core-api.md §7.3, Open 5).
+/// dropped. Always compiled, without a feature gate.
 #[derive(Debug, Default)]
 pub struct MemoryStore {
     conversations: Mutex<Vec<Conversation>>,

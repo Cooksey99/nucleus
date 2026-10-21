@@ -2,15 +2,13 @@
 //! request, capability and batch types.
 //!
 //! A provider streams a [`ChatRequest`] as owned [`Event`]s and reports what it
-//! and a model can do through [`Capabilities`]. Batch support is a set of
-//! optional methods that default to `Unsupported`, so a provider that implements
-//! only [`Provider::chat_stream`] keeps compiling with no downcasts.
+//! and a model can do through [`Capabilities`]. Batch methods default to
+//! `Unsupported`, so a provider may implement only [`Provider::chat_stream`].
 //!
 //! [`Event`]: crate::event::Event
 //!
-//! See `docs/design/core-api.md` §3 and §7 for the full design. The legacy
-//! provider surface stays in [`types`] for the hosted and local implementations
-//! until Phase 3.
+//! See `docs/design/core-api.md` §3 and §7. The legacy provider surface stays in
+//! [`types`] until Phase 3.
 
 mod factory;
 #[cfg(feature = "hosted")]
@@ -21,9 +19,8 @@ pub mod mock;
 pub mod types;
 
 // The legacy provider and tool types stay reachable at `provider::types` for the
-// hosted and local implementations, which keep using them until Phase 3. They are
-// not re-exported here because the new public [`Provider`] trait and the new
-// request types share their names.
+// hosted and local implementations until Phase 3. They are not re-exported here
+// because the new public [`Provider`] trait and request types share their names.
 //
 // The embedding request/response are still the legacy shapes and are re-exported
 // for the new `Provider::embed` signature.
@@ -137,16 +134,15 @@ impl ModelString {
 /// The new provider trait: stream a chat request, report capabilities, and
 /// optionally submit batches.
 ///
-/// It replaces the legacy `provider::types::Provider`. It returns a stream
-/// rather than taking a callback, and it never prints.
+/// It replaces the legacy `provider::types::Provider` and returns a stream
+/// rather than taking a callback; it never prints.
 #[cfg(any(feature = "hosted", feature = "lancedb"))]
 #[async_trait::async_trait]
 pub trait Provider: Send + Sync {
     /// Which provider this is, for diagnostics and error reporting.
     fn kind(&self) -> ProviderKind;
 
-    /// Stream a chat request. Never blocks on a callback; the caller drains the
-    /// stream. The library never prints.
+    /// Stream a chat request. The caller drains the returned stream.
     ///
     /// # Errors
     ///
@@ -155,8 +151,7 @@ pub trait Provider: Send + Sync {
     async fn chat_stream(&self, request: ChatRequest) -> Result<crate::event::EventStream>;
 
     /// Embed texts. Implementations that cannot embed return
-    /// [`Error::Unsupported`]. The `Embedder` trait arrives in Phase 4; this
-    /// stays for parity with the hosted APIs.
+    /// [`Error::Unsupported`]; the `Embedder` trait arrives in Phase 4.
     ///
     /// # Errors
     ///
@@ -167,8 +162,7 @@ pub trait Provider: Send + Sync {
     }
 
     /// What this provider and model can do. Consulted before sending, so an
-    /// unsupported request fails locally with a clear message rather than as a
-    /// provider 400.
+    /// unsupported request fails locally rather than as a provider 400.
     fn capabilities(&self, model: &str) -> Capabilities;
 
     // --- Batch: optional methods with an `Unsupported` default. ---
