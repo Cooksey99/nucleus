@@ -177,7 +177,7 @@ No API keys and no paid calls. Hosted-provider spikes work from API references, 
 - **Done when:** the default build depends on little more than reqwest, serde and tokio, and the Phase 1 CI gates pass.
 
 ### Phase 2: Core
-- [ ] **Design gate:** `docs/design/core-api.md` with the full public signatures (`Agent`, `Conversation`, `Message`, `Event`, `Tool`, `Provider`, `Error`, `RunOptions`, `Batch`, hooks), plus the Phase 6 example programs compiling against `todo!()` stubs. Reviewed and approved before implementation starts. The note must also settle these questions:
+- [x] **Design gate:** `docs/design/core-api.md` with the full public signatures (`Agent`, `Conversation`, `Message`, `Event`, `Tool`, `Provider`, `Error`, `RunOptions`, `Batch`, hooks), plus the Phase 6 example programs compiling against `todo!()` stubs. Reviewed and approved before implementation starts. The note must also settle these questions:
   - The model-string grammar, including `local/` paths that contain slashes, absolute paths, and `repo:file.gguf`. Gloo model IDs (`gloo-anthropic-claude-sonnet-4.6`) contain no slashes.
   - How `Usage` cost is calculated. Inputs: cost reported by the provider where available (xAI reports it exactly), a built-in price table users can override, separate cache-read and cache-write tokens, batch discounts, and Gloo's 6.5% guarded fee
   - Whether slash commands (the current `/help`, `/reset`, `/exit` in `chat/commands.rs`) stay in the library or belong to apps

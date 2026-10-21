@@ -1,6 +1,6 @@
 # Design: Phase 2 core API
 
-Date: 2026-10-19. Status: proposal for review, not final. Settles the open questions in [ROADMAP.md](../../ROADMAP.md) Phase 2 (lines 179-210, questions at 181-188) and records the full public signatures the implementation is written against. Points where a choice was made between named options are repeated under "Open questions" with a recommendation.
+Date: 2026-10-20. Status: approved. Settles the questions in [ROADMAP.md](../../ROADMAP.md) Phase 2 (lines 179-210, questions at 181-188) and records the full public signatures the implementation is written against. Every choice made between named options is recorded under "Decisions" with the pick that was made.
 
 Sources read for this note:
 
@@ -8,7 +8,7 @@ Sources read for this note:
 - The six Phase 0.5 spike notes in `docs/design/spikes/`: [mistralrs.md](spikes/mistralrs.md), [gloo.md](spikes/gloo.md), [responses-api.md](spikes/responses-api.md), [anthropic-messages.md](spikes/anthropic-messages.md), [rmcp.md](spikes/rmcp.md), [batch.md](spikes/batch.md).
 - The existing code this replaces: `src/chat/manager.rs` (`ChatManager`, the agent-loop reference), `src/chat/commands.rs` (slash commands), `src/provider/{mod,types,grok,mistralrs}.rs`, `src/tool/{plugin,registry}.rs`, `src/tools/commands.rs` (`ExecPlugin`), `src/patterns.rs`, `src/rag/`.
 
-Where a spike settles a question, this note follows it and cites the note; it does not re-argue. Where the spike left a question open and Phase 2 must still pick a default, the choice is marked **(Open N)** and collected at the end.
+Where a spike settles a question, this note follows it and cites the note; it does not re-argue. Where the spike left a question open and Phase 2 had to pick a default, the choice is recorded inline as a decision, and the full set is collected at the end.
 
 ---
 
@@ -61,7 +61,7 @@ src/
 
 ## 3. Model strings
 
-**Recommendation (Open 1):** split on the **first** `/` only.
+**Decision (model-string grammar):** split on the **first** `/` only.
 
 ```
 model-string := provider "/" model-id
@@ -115,7 +115,7 @@ impl ProviderKind {
 }
 ```
 
-Rationale: the "split on the first slash, keep the tail opaque" rule is the only one that needs no per-provider knowledge and no escaping, and it matches what `grok.rs` and `mistralrs.rs` already assume about their ids. The only cost is the double slash for an absolute local path. **(Open 1)** weighs a `file://` alternative; the recommendation is to ship the double slash and add sugar later if it grates.
+Rationale: the "split on the first slash, keep the tail opaque" rule is the only one that needs no per-provider knowledge and no escaping, and it matches what `grok.rs` and `mistralrs.rs` already assume about their ids. The only cost is the double slash for an absolute local path. The `file://` alternative was weighed and rejected: the double slash needs no extra syntax, is unambiguous, and keeps the grammar at "split on the first slash". Ship the double slash and add sugar later if it grates.
 
 ## 4. Messages and conversations
 
@@ -704,7 +704,7 @@ pub trait Provider: Send + Sync {
     /// a provider 400.
     fn capabilities(&self, model: &str) -> Capabilities;
 
-    // --- Batch: optional methods with an `Unsupported` default (Open 6). ---
+    // --- Batch: optional methods with an `Unsupported` default. ---
 
     async fn batch_submit(&self, request: BatchRequest) -> Result<BatchHandle, Error> {
         Err(self.batch_unsupported())
@@ -784,7 +784,7 @@ pub struct Capabilities {
     pub effort_levels: Vec<Effort>,
     pub images: bool,
     pub pdf: bool,
-    /// Batch support for this model, including the discount (Open 6).
+    /// Batch support for this model, including the discount.
     pub batch: BatchSupport,
     /// Minimum cacheable prefix in tokens, when the provider caches.
     pub cache_min_tokens: Option<u32>,
@@ -833,7 +833,7 @@ pub trait ConversationStore: Send + Sync {
 
 `Conversation::load`/`save` are thin wrappers over these, and `Agent::run` writes through the store at the end of a successful turn when one is configured. Batch handles are serializable separately (see §10); the store is only for conversations.
 
-**(Open 5):** whether Phase 2 ships a `MemoryStore` so mock tests can exercise save/resume. Recommendation: yes, a tiny `MemoryStore` behind nothing (always compiled), because the Phase 2 gate requires a save/resume test (ROADMAP.md:210).
+**Decision (in-memory store):** Phase 2 ships a tiny `MemoryStore` behind nothing (always compiled, no feature gate), so mock tests can exercise save/resume; the Phase 2 gate requires a save/resume test (ROADMAP.md:210).
 
 ## 8. The agent
 
@@ -953,7 +953,7 @@ impl AgentBuilder {
 }
 ```
 
-**(Open 8)** resolves the name clash on `on_tool_call`: the roadmap uses it for both the approval gate (Decisions 124) and the observability hooks (Phase 2 line 207). Recommendation: `on_tool_call` is the **approval gate** returning `Approval`; the observability hook is `on_tool_result`, which sees the call id and the outcome.
+**Decision (hook naming)** resolves the name clash on `on_tool_call`: the roadmap uses it for both the approval gate (Decisions 124) and the observability hooks (Phase 2 line 207). `on_tool_call` is the **approval gate** returning `Approval`; the observability hook is `on_tool_result`, which sees the call id and the outcome. This matches Decisions 124 and Phase 2 line 198, which both spell the approval gate as `.on_tool_call(|call| Approve | Deny)`.
 
 ```rust
 /// The approval hook's answer.
@@ -1086,7 +1086,7 @@ Three options were on the table (ROADMAP.md:185):
 - **(b) Client-side removal of thinking blocks whose prefix no longer matches.** The protocol layer tags each `ProviderItem` with `prefix_fingerprint` (§4.2) and drops the mismatched block and every later one. This is portable across all current models and needs no beta.
 - **(c) The API's `drop_block` option** (beta `thinking-binding-controls-2026-08-01`). It drops the first mismatched block and all later ones server-side, and reports `input_transformations` (anthropic-messages.md Q3, Cross-check).
 
-**Recommendation (Open 2):** ship **(b)** as the default in the Anthropic protocol layer, and keep **(c)** reachable through `provider_options`, and treat **(a)** as the future-preferred optimisation once every target model accepts mid-conversation system messages. Reasons: (b) needs no beta flag and no model allow-list, it is the exact behaviour the docs recommend ("strip blocks yourself only to save input tokens"), and it makes the two first-class features that change the prefix — `with_system`/`with_tools` and a handoff — never 400. Inside an in-flight tool loop, no block is ever dropped (the API requires the latest assistant turn's thinking blocks to be intact, anthropic-messages.md Q3).
+**Decision (Anthropic prefix change):** ship **(b)** as the default in the Anthropic protocol layer, keep **(c)** reachable through `provider_options`, and treat **(a)** as the future-preferred optimisation once every target model accepts mid-conversation system messages. Reasons: (b) needs no beta flag and no model allow-list, it is the exact behaviour the docs recommend ("strip blocks yourself only to save input tokens"), and it makes the two first-class features that change the prefix — `with_system`/`with_tools` and a handoff — never 400. Inside an in-flight tool loop, no block is ever dropped (the API requires the latest assistant turn's thinking blocks to be intact, anthropic-messages.md Q3).
 
 Consequences to document in user-facing docs:
 
@@ -1203,7 +1203,7 @@ Local models map their own way: `thinking = Auto` on `local/` should mean off, b
 
 ### 10.2 Batch
 
-(Answers ROADMAP.md:187.) **Recommendation (Open 6):** batch is a set of **optional `Provider` methods with an `Unsupported` default**, not a separate trait. Rationale: a custom provider that implements only `chat_stream` keeps compiling (the Phase 3 requirement that one example runs against all providers, ROADMAP.md:257); a separate `BatchProvider` trait would force callers to hold `Arc<dyn BatchProvider>` and downcast from `Arc<dyn Provider>`, which the owned/`Arc<dyn …>` rule does not want. Support is reported **per model** in `Capabilities::batch` (batch.md §Impact). The free function and types follow batch.md §6:
+(Answers ROADMAP.md:187.) **Decision (batch shape):** batch is a set of **optional `Provider` methods with an `Unsupported` default**, not a separate trait. Rationale: a custom provider that implements only `chat_stream` keeps compiling (the Phase 3 requirement that one example runs against all providers, ROADMAP.md:257); a separate `BatchProvider` trait would force callers to hold `Arc<dyn BatchProvider>` and downcast from `Arc<dyn Provider>`, which the owned/`Arc<dyn …>` rule does not want. Support is reported **per model** in `Capabilities::batch` (batch.md §Impact). The free function and types follow batch.md §6:
 
 ```rust
 /// Submit a batch. One model per batch, IDs validated before any network call.
@@ -1287,7 +1287,7 @@ impl Provider for MockProvider { /* … */ }
 
 ## 13. Slash commands
 
-(Answers ROADMAP.md:183.) **Recommendation (Open 3):** the slash commands (`/help`, `/reset`, `/exit`, `/quit` in `src/chat/commands.rs`) **leave the library** and belong to apps. Rationale: they are a terminal/UI affordance; their output is human text, and the library never prints (ROADMAP.md:83). `/reset` and `/exit` are not library concepts — the library primitive is `Conversation::clear()` (§4.3), which the app calls when it sees `/reset`. Keeping the parser in the library would also mean shipping user-facing strings the library must never emit. `nucleus-cli` owns its command set. The `CommandEffect`/`action`/`parse` code (commands.rs:1-122) is deleted in Phase 2; apps keep their own version.
+(Answers ROADMAP.md:183.) **Decision (slash commands):** the slash commands (`/help`, `/reset`, `/exit`, `/quit` in the former `src/chat/commands.rs`) **leave the library** and belong to apps. Rationale: they are a terminal/UI affordance; their output is human text, and the library never prints (ROADMAP.md:83). `/reset` and `/exit` are not library concepts — the library primitive is `Conversation::clear()` (§4.3), which the app calls when it sees `/reset`. Keeping the parser in the library would also mean shipping user-facing strings the library must never emit. `nucleus-cli` owns its command set. The `CommandEffect`/`action`/`parse` code (commands.rs:1-122) is deleted in Phase 2; apps keep their own version.
 
 ## 14. Feature flags
 
@@ -1331,26 +1331,26 @@ Each example must build with `cargo build --examples --all-features` (and with o
 - The MCP client beyond `McpServerSpec` and the wrapped-`Tool` seam (Phase 5).
 - `nucleus-cli`'s `login`/`logout` (ROADMAP.md:123).
 
-## Open questions
+## Decisions
 
-Each is a choice made above; the recommendation is the default unless review says otherwise.
+Each is a choice made above; the pick below is settled.
 
-1. **Model-string grammar for a local absolute path.** Ship `local//abs/path` (split on the first `/`, the tail's leading `/` marks a path), or add a `file://` scheme so it reads `local/file:///abs/path`? **Recommendation: ship `local//abs/path`.** It needs no extra syntax, is unambiguous, and the grammar stays "split on the first slash". Revisit if it grates. (ROADMAP.md:181)
+1. **Model-string grammar for a local absolute path.** Ship `local//abs/path` (split on the first `/`, the tail's leading `/` marks a path), not a `file://` scheme. **Decision: ship `local//abs/path`.** It needs no extra syntax, is unambiguous, and the grammar stays "split on the first slash". Revisit if it grates. (ROADMAP.md:181)
 
-2. **How `with_system` / `with_tools` / handoff stay valid on Anthropic.** (a) mid-conversation `role:"system"` message, (b) client-side removal of mismatched thinking blocks, (c) the beta `drop_block`. **Recommendation: (b) now, (a) as a later optimisation, (c) reachable via `provider_options`.** (b) is portable and needs no beta; (a) only works on four current models; (c) is beta. (ROADMAP.md:185; anthropic-messages.md Q3, Cross-check)
+2. **How `with_system` / `with_tools` / handoff stay valid on Anthropic.** (a) mid-conversation `role:"system"` message, (b) client-side removal of mismatched thinking blocks, (c) the beta `drop_block`. **Decision: (b) now, (a) as a later optimisation, (c) reachable via `provider_options`.** (b) is portable and needs no beta; (a) only works on four current models; (c) is beta. (ROADMAP.md:185; anthropic-messages.md Q3, Cross-check)
 
-3. **Slash commands.** Keep `/help`, `/reset`, `/exit` in the library or move them to apps. **Recommendation: move to apps.** They are UI text; the library never prints. `Conversation::clear()` is the primitive. (ROADMAP.md:183)
+3. **Slash commands.** Move `/help`, `/reset`, `/exit` out of the library to apps. **Decision: move to apps.** They are UI text; the library never prints. `Conversation::clear()` is the primitive. (ROADMAP.md:183)
 
-4. **`Usage` cost.** Provider-reported cost first, then a built-in overridable price table, with cache-read/write tokens, batch discounts and Gloo's 6.5% guarded fee applied on top; `cost = None` when unknown. **Recommendation: as §5.2.** The only sub-choice is `f64` for `Cost.usd`; a decimal type would avoid float drift, but `f64` matches every provider's reporting and is what the catalog gives. (ROADMAP.md:182)
+4. **`Usage` cost.** Provider-reported cost first, then a built-in overridable price table, with cache-read/write tokens, batch discounts and Gloo's 6.5% guarded fee applied on top; `cost = None` when unknown. **Decision: as §5.2.** The only sub-choice is `f64` for `Cost.usd`; a decimal type would avoid float drift, but `f64` matches every provider's reporting and is what the catalog gives. (ROADMAP.md:182)
 
-5. **`ConversationStore` implementations in Phase 2.** Ship a `MemoryStore` now, or only the trait. **Recommendation: ship `MemoryStore`** so the required save/resume test can run without a file or SQLite backend. (ROADMAP.md:184, 318)
+5. **`ConversationStore` implementations in Phase 2.** Ship a `MemoryStore` now, not only the trait. **Decision: ship `MemoryStore`** so the required save/resume test can run without a file or SQLite backend. (ROADMAP.md:184, 318)
 
-6. **Batch shape.** Optional `Provider` methods with an `Unsupported` default, or a separate `BatchProvider` trait. **Recommendation: optional methods.** Custom providers keep compiling, no downcasting, and `capabilities()` reports support per model. (ROADMAP.md:187; batch.md §Impact)
+6. **Batch shape.** Optional `Provider` methods with an `Unsupported` default, not a separate `BatchProvider` trait. **Decision: optional methods.** Custom providers keep compiling, no downcasting, and `capabilities()` reports support per model. (ROADMAP.md:187; batch.md §Impact)
 
-7. **`AgentSpec` tool resolution.** `AgentSpec` holds tool **names** (rule 2), so building needs a resolver. Pass a `&dyn ToolRegistry` to `build`, or let the app register tools on the builder after `from_spec`. **Recommendation: `AgentBuilder::from_spec(spec, &dyn ToolRegistry)`.** Keeps the spec pure data and the build explicit. (ROADMAP.md:184; rmcp.md §4)
+7. **`AgentSpec` tool resolution.** `AgentSpec` holds tool **names** (rule 2), so building needs a resolver. **Decision: `AgentBuilder::from_spec(spec, &dyn ToolRegistry)`** rather than registering tools on the builder after `from_spec`. Keeps the spec pure data and the build explicit. (ROADMAP.md:184; rmcp.md §4)
 
-8. **Hook naming.** The roadmap uses `on_tool_call` for both the approval gate and the observability hook. **Recommendation: `on_tool_call` is the approval gate returning `Approval`; the observer is `on_tool_result`.** Matches Decisions 124 and Phase 2 line 198, which both spell the approval gate as `.on_tool_call(|call| Approve | Deny)`. (ROADMAP.md:124, 198, 207)
+8. **Hook naming.** The roadmap uses `on_tool_call` for both the approval gate and the observability hook. **Decision: `on_tool_call` is the approval gate returning `Approval`; the observer is `on_tool_result`.** Matches Decisions 124 and Phase 2 line 198, which both spell the approval gate as `.on_tool_call(|call| Approve | Deny)`. (ROADMAP.md:124, 198, 207)
 
-9. **`Error` and `Event` serde depth.** `Error` is serde-serializable and so is every payload it carries; the stream is `Stream<Item = Event>` with `Event::Error(Error)`, not `Stream<Item = Result<Event, Error>>`. **Recommendation: as written**, because the roadmap fixes the stream item as `Event` (ROADMAP.md:206) and rule 1 wants serde data. If review prefers the idiomatic `Result` item, that is the single line to change and it ripples through `Agent::run_stream` only.
+9. **`Error` and `Event` serde depth.** `Error` is serde-serializable and so is every payload it carries; the stream is `Stream<Item = Event>` with `Event::Error(Error)`, not `Stream<Item = Result<Event, Error>>`. **Decision: as written**, because the roadmap fixes the stream item as `Event` (ROADMAP.md:206) and rule 1 wants serde data. If review prefers the idiomatic `Result` item, that is the single line to change and it ripples through `Agent::run_stream` only.
 
-10. **`Thinking::Auto` default on `local/`.** Follow the model default (Qwen3 thinks, expensively) or default local to off. **Recommendation: default `local/` to off via the per-agent mapping**, because thinking multiplies tokens on small models and the spike recommends it (mistralrs.md §Impact 2). (ROADMAP.md:186)
+10. **`Thinking::Auto` default on `local/`.** **Decision: default `local/` to off via the per-agent mapping**, because thinking multiplies tokens on small models and the spike recommends it (mistralrs.md §Impact 2). (ROADMAP.md:186)

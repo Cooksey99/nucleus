@@ -50,13 +50,13 @@ pub mod tools;
 // The core error type and the new conversation model.
 pub use conversation::{Conversation, ConversationId};
 pub use error::{Error, ProviderError, RequestId, Result};
-pub use event::{Cost, CostSource, Event, StopReason, Usage};
+pub use event::{Cost, CostSource, Event, ModelPrice, PriceTable, StopReason, Usage};
 pub use message::{KnowledgeSource, Message, Part, ProviderItem, Role, ToolCallId, ToolOutput};
 pub use options::{CacheTtl, Effort, RunOptions, Thinking, ThinkingDisplay};
-pub use store::ConversationStore;
+pub use store::{ConversationStore, MemoryStore};
 
 // Turn-level agent data types.
-pub use agent::{Approval, KnowledgeMode, Turn};
+pub use agent::{Approval, KnowledgeMode, ToolCall, Turn};
 
 #[cfg(any(feature = "hosted", feature = "lancedb"))]
 pub use event::EventStream;
@@ -69,14 +69,23 @@ pub use provider::MistralRsProvider;
 #[cfg(feature = "experimental")]
 pub use provider::{grok_login, grok_logout};
 
-// The legacy provider and tool surface, still used by the hosted and local
-// providers and by the built-in tools until they move to the new traits.
+// The new provider abstraction: the `Provider` trait with its request,
+// capability and batch types (core-api.md §3, §7).
+pub use batch::{BatchHandle, BatchItem, BatchPart, BatchProgress, BatchRequest};
 pub use provider::{
-    ChatRequest, ChatResponse, Provider, Tool, ToolCall, ToolCallFunction, ToolFunction,
+    BatchSupport, Capabilities, ChatRequest, EmbedRequest, EmbedResponse, ModelString,
+    ProviderKind, ThinkingSupport, ToolChoice, ToolSpec,
 };
+// `Provider::chat_stream` returns `EventStream`, so the trait carries the same
+// feature gate and is absent from a build with neither `hosted` nor `lancedb`.
+#[cfg(any(feature = "hosted", feature = "lancedb"))]
+pub use provider::Provider;
+// The model-facing tool trait and its adapters, and the legacy plugin surface.
+pub use tool::{tool_fn, tool_fn_sync, Tool, ToolAnnotations, ToolContext};
+pub use tool::{Plugin, PluginError, PluginOutput, PluginRegistry};
+
 #[cfg(feature = "rag")]
 pub use rag::RagEngine;
-pub use tool::{Plugin, PluginError, PluginOutput, PluginRegistry};
 
 #[cfg(feature = "std")]
 pub use tools::{ExecPlugin, ReadFilePlugin, SearchPlugin, WriteFilePlugin};
@@ -100,8 +109,11 @@ pub async fn complete(model: impl AsRef<str>, prompt: impl AsRef<str>) -> Result
 pub mod prelude {
     pub use crate::{
         complete, Config, Conversation, ConversationStore, Error, Message, Plugin, PluginRegistry,
-        Provider, Result, Role, RunOptions, Usage,
+        Result, Role, RunOptions, Usage,
     };
+
+    #[cfg(any(feature = "hosted", feature = "lancedb"))]
+    pub use crate::Provider;
 
     #[cfg(feature = "std")]
     pub use crate::{ExecPlugin, ReadFilePlugin, SearchPlugin, WriteFilePlugin};

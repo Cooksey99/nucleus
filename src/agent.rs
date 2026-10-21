@@ -11,7 +11,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::event::{StopReason, Usage};
-use crate::message::Message;
+use crate::message::{Message, ToolCallId};
+use crate::tool::ToolAnnotations;
 
 /// The result of one completed turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,9 +34,26 @@ pub struct Turn {
 #[non_exhaustive]
 pub enum Approval {
     /// The tool may run.
-    Allow,
-    /// The tool must not run.
+    Approve,
+    /// Refuse; a denial goes back to the model as a tool result with
+    /// `is_error: true`.
     Deny,
+}
+
+/// The tool-call information a hook sees before the tool runs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ToolCall {
+    /// The id of the call.
+    pub id: ToolCallId,
+    /// The model-facing tool name.
+    pub name: String,
+    /// Raw arguments JSON, as the model produced it.
+    pub input: Box<serde_json::value::RawValue>,
+    /// Untrusted annotations from the tool, when it declares any. Reaches the
+    /// approval hook as context and is never used to skip approval.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<ToolAnnotations>,
 }
 
 /// How retrieved knowledge is attached to a turn.
@@ -47,4 +65,40 @@ pub enum KnowledgeMode {
     Inject,
     /// Expose retrieval as a tool the model may call.
     Tool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_approval_hook_sees_the_call_and_returns_an_approval() {
+        let call = ToolCall {
+            id: ToolCallId("call_1".to_string()),
+            name: "exec".to_string(),
+            input: serde_json::value::RawValue::from_string(r#"{"command":"ls"}"#.to_string())
+                .expect("valid raw json"),
+            annotations: Some(ToolAnnotations {
+                destructive_hint: true,
+                ..ToolAnnotations::default()
+            }),
+        };
+
+        // The approval gate's shape, per §8.1: `Fn(&ToolCall) -> Approval`.
+        let gate = |call: &ToolCall| -> Approval {
+            if call
+                .annotations
+                .as_ref()
+                .is_some_and(|annotations| annotations.destructive_hint)
+            {
+                Approval::Deny
+            } else {
+                Approval::Approve
+            }
+        };
+
+        assert_eq!(gate(&call), Approval::Deny);
+        let json = serde_json::to_string(&call).expect("the call serializes");
+        assert!(json.contains("\"exec\""));
+    }
 }

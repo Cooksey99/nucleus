@@ -61,14 +61,22 @@ impl Default for ConversationId {
 
 /// A monotonic, opaque id string. The concrete scheme (a UUIDv7) is a private
 /// detail of the conversation id.
+///
+/// A timestamp alone collides when the clock does not advance between calls,
+/// which happens on macOS CI. A process-local counter keeps ids unique.
 fn uuid_like() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
 
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    format!("conv-{nanos:032x}")
+    let seq = NEXT.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    format!("conv-{nanos:032x}{seq:016x}{pid:08x}")
 }
 
 impl Conversation {
@@ -147,6 +155,27 @@ mod tests {
 
     #[test]
     fn ids_are_distinct() {
-        assert_ne!(ConversationId::new(), ConversationId::new());
+        // A coarse clock must not collapse back-to-back ids.
+        let ids: std::collections::HashSet<_> = (0..32).map(|_| ConversationId::new()).collect();
+        assert_eq!(ids.len(), 32);
+    }
+
+    #[test]
+    fn history_is_append_only() {
+        // The only mutator is `push`; there is no API to edit or remove a
+        // message that was already sent, so earlier messages are unchanged
+        // after later appends.
+        let mut conversation = Conversation::new();
+        conversation.push(Message::user("first"));
+        let first_text = conversation.messages()[0].text();
+
+        conversation.push(Message::assistant_text("second"));
+        conversation.push(Message::user("third"));
+
+        assert_eq!(conversation.messages().len(), 3);
+        assert_eq!(conversation.messages()[0].text(), first_text);
+        assert_eq!(conversation.messages()[0].text(), "first");
+        assert_eq!(conversation.messages()[1].text(), "second");
+        assert_eq!(conversation.messages()[2].text(), "third");
     }
 }

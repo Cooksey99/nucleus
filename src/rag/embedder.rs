@@ -5,7 +5,7 @@
 
 use crate::{
     models::EmbeddingModel,
-    provider::{Provider, ProviderError},
+    provider::types::{Provider, ProviderError},
 };
 use std::sync::Arc;
 use thiserror::Error;
