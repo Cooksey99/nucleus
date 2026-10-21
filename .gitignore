@@ -56,6 +56,7 @@ Thumbs.db
 *.bak
 
 WARP.md
+.gloocode
 
 config.yaml
 
