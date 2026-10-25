@@ -1,7 +1,7 @@
 //! The [`ConversationStore`] trait: pluggable conversation persistence.
 //!
-//! The agent never consults a store on its own; only [`Conversation::load`] and
-//! [`Conversation::save`] call into it.
+//! A configured agent saves the conversation at the end of a successful run.
+//! [`Conversation::load`] and [`Conversation::save`] remain the direct API.
 //!
 //! [`Conversation::load`]: crate::conversation::Conversation::load
 //! [`Conversation::save`]: crate::conversation::Conversation::save

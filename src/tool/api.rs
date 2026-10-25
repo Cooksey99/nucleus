@@ -79,7 +79,8 @@ pub struct ToolContext {
 
 impl ToolContext {
     /// A context for `call_id` inside `conversation_id`, not cancelled.
-    // Constructed by the agent loop, which lands with the core agent task.
+    // The agent loop calls this. That loop is compiled only with `hosted` or
+    // `lancedb`, so this is unused in a build with neither.
     #[allow(dead_code)]
     pub(crate) fn new(call_id: ToolCallId, conversation_id: ConversationId) -> Self {
         Self {

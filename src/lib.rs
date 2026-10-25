@@ -55,8 +55,8 @@ pub use message::{KnowledgeSource, Message, Part, ProviderItem, Role, ToolCallId
 pub use options::{CacheTtl, Effort, RunOptions, Thinking, ThinkingDisplay};
 pub use store::{ConversationStore, MemoryStore};
 
-// Turn-level agent data types.
-pub use agent::{Approval, KnowledgeMode, ToolCall, Turn};
+// The agent, and the turn-level data types it returns.
+pub use agent::{Agent, AgentBuilder, Approval, KnowledgeMode, ToolCall, Turn};
 
 #[cfg(any(feature = "hosted", feature = "lancedb"))]
 pub use event::EventStream;
@@ -108,8 +108,8 @@ pub async fn complete(model: impl AsRef<str>, prompt: impl AsRef<str>) -> Result
 /// Convenient imports.
 pub mod prelude {
     pub use crate::{
-        complete, Config, Conversation, ConversationStore, Error, Message, Plugin, PluginRegistry,
-        Result, Role, RunOptions, Usage,
+        complete, Agent, Config, Conversation, ConversationStore, Error, Message, Plugin,
+        PluginRegistry, Result, Role, RunOptions, Usage,
     };
 
     #[cfg(any(feature = "hosted", feature = "lancedb"))]
