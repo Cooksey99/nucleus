@@ -17,13 +17,13 @@
 //!
 //! - `hosted` (default): Grok and other hosted providers
 //! - `std` (default): built-in file, search, and exec tools
-//! - `local`: in-process mistral.rs
+//! - `local`: in-process models (`local//path.gguf`)
 //! - `rag`: retrieval. Also enables `local` and, until Phase 4, `lancedb`
 //! - `lancedb`: LanceDB vector store
 //! - `experimental`: Grok account login
 //! - `mcp`: reserved for Phase 5
-//! - `metal`: Apple Silicon acceleration for mistral.rs
-//! - `cuda`: NVIDIA acceleration for mistral.rs
+//! - `metal`: Apple Silicon acceleration for local models
+//! - `cuda`: NVIDIA acceleration for local models
 //!
 //! The module layout follows `docs/design/core-api.md` §2.
 
@@ -64,8 +64,6 @@ pub use event::EventStream;
 pub use config::{Config, IndexerConfig};
 #[cfg(feature = "hosted")]
 pub use provider::GrokProvider;
-#[cfg(feature = "local")]
-pub use provider::MistralRsProvider;
 #[cfg(feature = "experimental")]
 pub use provider::{grok_login, grok_logout};
 
@@ -73,8 +71,8 @@ pub use provider::{grok_login, grok_logout};
 // capability and batch types (core-api.md §3, §7).
 pub use batch::{BatchHandle, BatchItem, BatchPart, BatchProgress, BatchRequest};
 pub use provider::{
-    BatchSupport, Capabilities, ChatRequest, EmbedRequest, EmbedResponse, ModelString,
-    ProviderKind, ThinkingSupport, ToolChoice, ToolSpec,
+    BatchSupport, Capabilities, ChatRequest, ModelString, ProviderKind, ThinkingSupport,
+    ToolChoice, ToolSpec,
 };
 // `Provider::chat_stream` returns `EventStream`, so the trait carries the same
 // feature gate and is absent from a build with neither `hosted` nor `lancedb`.

@@ -13,6 +13,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Phase 1 CI gates: clippy `-D warnings`, rustfmt, cargo-deny, an MSRV check, and `cargo hack --each-feature` (excluding `metal` and `cuda`).
 - Phase 2 message model and conversation storage (`src/message.rs`, `src/conversation.rs`, `src/store.rs`): the ordered `Part` list with raw-JSON tool-call input and tagged `ProviderItem`s, a stable `ConversationId` with append-only history and serde save/resume, and an always-compiled in-memory `MemoryStore` for tests.
 - `Agent` and `AgentBuilder`, and `Agent::run`: one turn against a `Provider`, including the tool loop, the approval hook, and a save through `ConversationStore` when one is set.
+- `examples/agent.rs`: runs that loop against a scripted provider, with no API key. `ToolCallId::new` and `Capabilities::streaming` are the constructors a caller needs to implement `Provider` outside the crate.
 - Phase 2 error, usage and options types: the `#[non_exhaustive]` `nucleus::Error` with a `ProviderError`/`RequestId` on every provider failure, `Usage`/`Cost` with cache-read and cache-write tokens and an overridable `PriceTable`/`ModelPrice` for cost from a price table, `StopReason`, and the `RunOptions` set (`Effort`, `Thinking`, `ThinkingDisplay`, `CacheTtl`, `provider_options`/`provider_headers`).
 
 ### Changed
@@ -26,6 +27,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Slash commands (`/help`, `/reset`, `/exit`) leave the library and belong to apps; the reset primitive is `Conversation::clear()`.
 - The plugin `Permission` system. Registration is synchronous and always succeeds. An approval hook comes later.
 - CoreML (archived on `archive/coreml`), the IPC server, Ollama, Qdrant, `ModelRegistry`, `nucleus-dev`, and the CLI stubs other than `login` and `logout`.
+- `MistralRsProvider`, the `"mistralrs"` arm of `create_provider`, and `ProviderType`. Local models load through a `local//path.gguf` model string. The legacy config's default provider is now `"grok"`.
+- `Provider::embed` and the `EmbedRequest`/`EmbedResponse` types. Embeddings get their own `Embedder` trait in Phase 4 and are not part of any provider.
 - Unused config: CoreML feature names, personalization, chat-history and tool-state paths, and the Qdrant gRPC storage mode.
 
 ### Fixed

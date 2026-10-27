@@ -6,25 +6,6 @@ use thiserror::Error;
 
 use crate::models::EmbeddingModel;
 
-/// The backend a provider implementation talks to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProviderType {
-    /// Local, in-process mistral.rs.
-    MistralRs,
-    /// Hosted xAI Grok.
-    Grok,
-}
-
-impl ProviderType {
-    /// The provider type's lowercase name, as used in configuration.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ProviderType::MistralRs => "mistralrs",
-            ProviderType::Grok => "grok",
-        }
-    }
-}
-
 /// Errors that can occur when interacting with a provider.
 #[derive(Debug, Error)]
 pub enum ProviderError {
@@ -56,7 +37,7 @@ pub type Result<T> = std::result::Result<T, ProviderError>;
 /// Provider trait for LLM backends.
 ///
 /// Implementations provide chat completions and embeddings through
-/// different backends (Ollama, mistral.rs, etc.).
+/// different backends.
 #[async_trait]
 pub trait Provider: Send + Sync {
     /// Stream a chat completion.
@@ -250,26 +231,6 @@ pub struct ToolCallFunction {
     pub name: String,
     /// The function's arguments as JSON.
     pub arguments: serde_json::Value,
-}
-
-/// Request for generating embeddings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbedRequest {
-    /// Embedding model identifier.
-    pub model: String,
-    /// The text to embed.
-    pub input: String,
-}
-
-/// Response containing embeddings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbedResponse {
-    /// Embedding model identifier.
-    pub model: String,
-
-    /// One embedding vector per input.
-    #[serde(default)]
-    pub embeddings: Vec<Vec<f32>>,
 }
 
 /// Requested structured output for a hosted call.

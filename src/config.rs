@@ -40,7 +40,7 @@ pub struct Config {
 /// Configuration for the AI model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
-    /// Provider type: "mistralrs" or "grok"
+    /// Provider type. Only "grok" is supported.
     #[serde(default = "default_provider")]
     pub provider: String,
     /// Model identifier understood by the selected provider.
@@ -57,7 +57,7 @@ pub struct LlmConfig {
 }
 
 fn default_provider() -> String {
-    "mistralrs".to_string()
+    "grok".to_string()
 }
 
 /// Configuration for RAG processing.

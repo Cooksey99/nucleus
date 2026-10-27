@@ -141,6 +141,13 @@ impl Message {
 #[non_exhaustive]
 pub struct ToolCallId(pub String);
 
+impl ToolCallId {
+    /// An id from the provider's own string.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+}
+
 /// A tool's result. `content` is what the model reads; `structured` is the JSON
 /// form when the tool produced one.
 #[derive(Debug, Clone, Serialize, Deserialize)]

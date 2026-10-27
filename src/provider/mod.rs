@@ -13,18 +13,14 @@
 mod factory;
 #[cfg(feature = "hosted")]
 pub mod grok;
-#[cfg(feature = "local")]
-pub mod mistralrs;
+#[cfg(all(feature = "local", any(feature = "hosted", feature = "lancedb")))]
+mod local;
 pub mod mock;
 pub mod types;
 
 // The legacy provider and tool types stay reachable at `provider::types` for the
 // hosted and local implementations until Phase 3. They are not re-exported here
 // because the new public [`Provider`] trait and request types share their names.
-//
-// The embedding request/response are still the legacy shapes and are re-exported
-// for the new `Provider::embed` signature.
-pub use types::{EmbedRequest, EmbedResponse};
 
 // Re-export provider implementations.
 pub use factory::create_provider;
@@ -32,8 +28,28 @@ pub use factory::create_provider;
 pub use grok::GrokProvider;
 #[cfg(feature = "experimental")]
 pub use grok::{login as grok_login, logout as grok_logout};
-#[cfg(feature = "local")]
-pub use mistralrs::MistralRsProvider;
+
+/// Open the local provider for a `local//absolute/path` model id.
+///
+/// # Errors
+///
+/// Returns [`Error::Unsupported`] when the `local` feature is off.
+#[cfg(any(feature = "hosted", feature = "lancedb"))]
+pub(crate) async fn open_local(model_id: &str) -> Result<std::sync::Arc<dyn Provider>> {
+    #[cfg(feature = "local")]
+    {
+        let provider = local::LocalProvider::open(model_id).await?;
+        Ok(std::sync::Arc::new(provider))
+    }
+    #[cfg(not(feature = "local"))]
+    {
+        Err(Error::Unsupported {
+            feature: "local".to_string(),
+            provider: "local".to_string(),
+            model: Some(model_id.to_string()),
+        })
+    }
+}
 
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +73,7 @@ pub enum ProviderKind {
     Grok,
     /// Gloo's hosted proxy.
     Gloo,
-    /// In-process mistral.rs.
+    /// A model running in-process.
     Local,
     /// A provider the caller installed with `AgentBuilder::provider`.
     Custom,
@@ -150,17 +166,6 @@ pub trait Provider: Send + Sync {
     /// mid-stream travel as [`Event::Error`](crate::event::Event::Error).
     async fn chat_stream(&self, request: ChatRequest) -> Result<crate::event::EventStream>;
 
-    /// Embed texts. Implementations that cannot embed return
-    /// [`Error::Unsupported`]; the `Embedder` trait arrives in Phase 4.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Unsupported`] by default.
-    async fn embed(&self, request: EmbedRequest) -> Result<EmbedResponse> {
-        let _ = request;
-        Err(embeddings_unsupported(self.kind()))
-    }
-
     /// What this provider and model can do. Consulted before sending, so an
     /// unsupported request fails locally rather than as a provider 400.
     fn capabilities(&self, model: &str) -> Capabilities;
@@ -217,16 +222,6 @@ pub trait Provider: Send + Sync {
 fn batch_unsupported(kind: ProviderKind) -> Error {
     Error::Unsupported {
         feature: "batch".to_string(),
-        provider: kind.prefix().to_string(),
-        model: None,
-    }
-}
-
-/// The `Error::Unsupported` returned by the embeddings default.
-#[cfg(any(feature = "hosted", feature = "lancedb"))]
-fn embeddings_unsupported(kind: ProviderKind) -> Error {
-    Error::Unsupported {
-        feature: "embeddings".to_string(),
         provider: kind.prefix().to_string(),
         model: None,
     }
@@ -320,6 +315,29 @@ pub struct Capabilities {
     pub cache_min_tokens: Option<u32>,
 }
 
+impl Capabilities {
+    /// A streaming chat provider. Tools and thinking are what the agent checks
+    /// before a run; everything else is off or unknown.
+    ///
+    /// `#[non_exhaustive]` means a caller cannot build this with a struct
+    /// literal. Custom providers use this instead.
+    pub fn streaming(thinking: ThinkingSupport, tools: bool) -> Self {
+        Self {
+            context_window: None,
+            max_output_tokens: None,
+            streaming: true,
+            tools,
+            structured_output: false,
+            thinking,
+            effort_levels: Vec::new(),
+            images: false,
+            pdf: false,
+            batch: BatchSupport::Unsupported,
+            cache_min_tokens: None,
+        }
+    }
+}
+
 /// How `Thinking::Off` maps on a model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -352,7 +370,7 @@ mod tests {
     use super::*;
 
     /// A provider that implements only the required methods and relies on the
-    /// `embeddings` and `batch` defaults. If this compiles, a custom provider
+    /// `batch` defaults. If this compiles, a custom provider
     /// needs no downcast and no extra trait.
     struct StubProvider;
 

@@ -67,6 +67,7 @@ tokio.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
+futures.workspace = true
 tempfile = "3.13"
 dirs = "6.0.0"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
@@ -75,6 +76,14 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 [[example]]
 name = "one_shot"
 required-features = ["hosted"]
+
+[[example]]
+name = "agent"
+required-features = ["hosted"]
+
+[[example]]
+name = "local_hello"
+required-features = ["local"]
 
 # Optimize heavy dependencies even in debug builds.
 # This keeps your code fast to compile while making inference fast.

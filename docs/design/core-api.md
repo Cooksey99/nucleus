@@ -692,13 +692,6 @@ pub trait Provider: Send + Sync {
     /// the stream. The library never prints.
     async fn chat_stream(&self, request: ChatRequest) -> Result<EventStream, Error>;
 
-    /// Embed texts. Implementations that cannot embed return
-    /// `Error::Unsupported`. The `Embedder` trait arrives in Phase 4; this
-    /// stays for parity with the hosted APIs.
-    async fn embed(&self, request: EmbedRequest) -> Result<EmbedResponse, Error> {
-        Err(Error::Unsupported { feature: "embeddings".into(), provider: self.kind().prefix().into(), model: None })
-    }
-
     /// What this provider and model can do. Consulted before sending, so an
     /// unsupported request fails locally with a clear message rather than as
     /// a provider 400.
@@ -722,6 +715,8 @@ pub trait Provider: Send + Sync {
     // fn batch_unsupported(&self) -> Error;
 }
 ```
+
+Embeddings are not on `Provider`. They belong to the separate `Embedder` trait (Phase 4): the embedding model is fixed for the life of an index, often runs somewhere other than the chat model, and many chat providers have no embeddings API.
 
 `ChatRequest` is the public, provider-neutral request the agent builds. It carries owned data only; the wire encoding is the provider's private business.
 

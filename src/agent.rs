@@ -353,6 +353,9 @@ impl AgentBuilder {
     }
 
     /// The `provider/id` model string. Parsed in [`AgentBuilder::build`].
+    ///
+    /// `local//absolute/path.gguf` is a file on disk. Build loads it with the
+    /// local provider when none was set.
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
         self
@@ -445,9 +448,10 @@ impl AgentBuilder {
             .ok_or_else(|| invalid("missing_model", "agent build requires a model"))?;
         let model = ModelString::parse(&model)?;
         #[cfg(any(feature = "hosted", feature = "lancedb"))]
-        let provider = self
-            .provider
-            .ok_or_else(|| invalid("missing_provider", "agent build requires a provider"))?;
+        let provider = match self.provider {
+            Some(provider) => provider,
+            None => resolve_builtin(&model).await?,
+        };
         Ok(Agent {
             #[cfg(any(feature = "hosted", feature = "lancedb"))]
             provider,
@@ -515,6 +519,20 @@ pub enum KnowledgeMode {
     Inject,
     /// Expose retrieval as a tool the model may call.
     Tool,
+}
+
+/// The provider named by the model prefix, when the caller did not install one.
+#[cfg(any(feature = "hosted", feature = "lancedb"))]
+async fn resolve_builtin(
+    model: &crate::provider::ModelString,
+) -> Result<Arc<dyn crate::provider::Provider>> {
+    match model.provider {
+        crate::provider::ProviderKind::Local => crate::provider::open_local(&model.id).await,
+        _ => Err(invalid(
+            "missing_provider",
+            "agent build requires a provider",
+        )),
+    }
 }
 
 fn invalid(code: &str, message: &str) -> Error {
@@ -859,6 +877,17 @@ mod run_tests {
             .build()
             .await
             .expect("builds")
+    }
+
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn a_local_path_without_the_local_feature_is_unsupported() {
+        let err = Agent::builder()
+            .model("local//tmp/missing.gguf")
+            .build()
+            .await
+            .expect_err("local feature is off");
+        assert!(matches!(err, Error::Unsupported { .. }));
     }
 
     #[tokio::test]
